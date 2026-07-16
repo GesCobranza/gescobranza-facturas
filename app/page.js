@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 
 export default function Home() {
   const [tab, setTab] = useState('captura');
@@ -36,7 +37,7 @@ export default function Home() {
   const [gFiltroEnvio, setGFiltroEnvio] = useState('');
 
   // ---- Cruce 5005 ----
-  const [raw5005Texto, setRaw5005Texto] = useState('');
+  const [raw5005File, setRaw5005File] = useState(null);
   const [raw5005Mensaje, setRaw5005Mensaje] = useState('');
   const [cruceMensaje, setCruceMensaje] = useState('');
   const [cargandoCruce, setCargandoCruce] = useState(false);
@@ -190,34 +191,63 @@ export default function Home() {
   }
 
   // ---- Cruce 5005: acciones ----
-  function parseRaw5005(texto) {
-    const lineas = texto.trim().split('\n').filter((l) => l.trim());
-    const filas = [];
-    for (const linea of lineas) {
-      const partes = linea.split('\t');
-      if (partes.length < 3) continue;
-      const [proveedor, altaCol, importeTxt, comprobante] = partes;
-      const importeNum = parseFloat(String(importeTxt).replace(/[^0-9.\-]/g, ''));
-      if (isNaN(importeNum)) continue; // probablemente encabezado
-      filas.push({ proveedor: (proveedor || '').trim(), alta: (altaCol || '').trim(), importe: importeNum, comprobante: (comprobante || '').trim() });
-    }
-    return filas;
-  }
-
-  async function cargarRaw5005() {
-    const filas = parseRaw5005(raw5005Texto);
-    if (filas.length === 0) {
-      setRaw5005Mensaje('No se detectaron filas válidas — revisa que hayas pegado Proveedor, Alta, Importe y Comprobante separados por tabulador (copiado directo de Excel).');
+  async function cargarArchivo5005() {
+    if (!raw5005File) {
+      setRaw5005Mensaje('Selecciona primero el archivo del 5005.');
       return;
     }
-    setRaw5005Mensaje('Cargando…');
-    const res = await fetch('/api/raw5005', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filas }),
-    });
-    const data = await res.json();
-    setRaw5005Mensaje(data.ok ? `Cargadas ${data.cargadas} filas del 5005.` : `Error: ${data.error}`);
+    setRaw5005Mensaje('Leyendo archivo…');
+    try {
+      const buffer = await raw5005File.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const hoja = wb.Sheets[wb.SheetNames[0]];
+      const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
+
+      // Busca automáticamente en qué fila están los encabezados y en qué columna está cada dato
+      let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
+      for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
+        const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
+        const p = fila.findIndex((c) => c.includes('proveedor'));
+        const a = fila.findIndex((c) => c.includes('ent alm') || c === 'alta');
+        const imp = fila.findIndex((c) => c.includes('importe'));
+        const comp = fila.findIndex((c) => c.includes('comprobante'));
+        if (p > -1 && a > -1 && imp > -1 && comp > -1) {
+          idxHeader = i; colProv = p; colAlta = a; colImporte = imp; colComp = comp;
+          break;
+        }
+      }
+      if (idxHeader === -1) {
+        setRaw5005Mensaje('No encontré las columnas esperadas (Proveedor, Num Ent Alm, Importe, Comprobante) en las primeras filas del archivo — revisa que sea el reporte 5005 correcto.');
+        return;
+      }
+
+      const filas = [];
+      for (let i = idxHeader + 1; i < filasCrudas.length; i++) {
+        const fila = filasCrudas[i];
+        const proveedor = String(fila[colProv] || '').trim();
+        const alta = String(fila[colAlta] || '').trim();
+        const importeNum = parseFloat(String(fila[colImporte]).replace(/[^0-9.\-]/g, ''));
+        const comprobante = String(fila[colComp] || '').trim();
+        if (!alta || !proveedor || isNaN(importeNum)) continue;
+        filas.push({ proveedor, alta, importe: importeNum, comprobante });
+      }
+
+      if (filas.length === 0) {
+        setRaw5005Mensaje('No se detectaron filas de datos válidas en el archivo.');
+        return;
+      }
+
+      setRaw5005Mensaje(`Subiendo ${filas.length} filas…`);
+      const res = await fetch('/api/raw5005', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filas }),
+      });
+      const data = await res.json();
+      setRaw5005Mensaje(data.ok ? `✓ Archivo cargado: ${data.cargadas} filas del 5005. Ya puedes cruzar.` : `Error: ${data.error}`);
+    } catch (err) {
+      setRaw5005Mensaje('Error leyendo el archivo: ' + err.message);
+    }
   }
 
   async function cruzarCon5005() {
@@ -486,17 +516,19 @@ export default function Home() {
           <div className="card">
             <h2>1. Cargar el reporte 5005</h2>
             <p className="muted" style={{ marginBottom: 12 }}>
-              De tu archivo del 5005, copia las columnas <b>No. Proveedor, Num Ent Alm, Importe, Comprobante</b> (en ese orden)
-              y pégalas aquí abajo directo desde Excel — cada 5005 nuevo reemplaza al anterior completo.
+              Sube tu archivo del 5005 completo, tal cual lo recibes (Excel) — el sistema encuentra solo las columnas que
+              necesita (Proveedor, Num Ent Alm, Importe, Comprobante), sin importar cuántas más traiga el archivo.
+              Cada archivo nuevo reemplaza al anterior completo.
             </p>
-            <textarea
-              value={raw5005Texto}
-              onChange={(e) => setRaw5005Texto(e.target.value)}
-              placeholder="Pega aquí las 4 columnas copiadas de Excel…"
-              style={{ width: '100%', minHeight: 160, padding: 10, border: '1px solid var(--line)', borderRadius: 7, fontFamily: 'monospace', fontSize: 12 }}
+            <input
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(e) => setRaw5005File(e.target.files[0] || null)}
             />
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-primary" onClick={cargarArchivo5005}>Cargar archivo del 5005</button>
+            </div>
             {raw5005Mensaje && <p className="muted" style={{ marginTop: 8 }}>{raw5005Mensaje}</p>}
-            <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={cargarRaw5005}>Cargar datos del 5005</button>
           </div>
 
           <div className="card">
