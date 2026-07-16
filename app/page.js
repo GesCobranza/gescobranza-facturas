@@ -262,17 +262,22 @@ export default function Home() {
     }
   }
 
-  async function cruzarCon5005() {
+async function cruzarCon5005() {
     setCargandoCruce(true);
     setCruceMensaje('Cruzando…');
-    const res = await fetch('/api/cruce5005', { method: 'POST' });
-    const data = await res.json();
-    setCargandoCruce(false);
-    if (data.ok) {
-      setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
-      cargarFacturas();
-    } else {
-      setCruceMensaje(`Error: ${data.error}`);
+    try {
+      const res = await fetch('/api/cruce5005', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
+        cargarFacturas();
+      } else {
+        setCruceMensaje(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setCruceMensaje('Error de conexión: ' + err.message);
+    } finally {
+      setCargandoCruce(false);
     }
   }
 
