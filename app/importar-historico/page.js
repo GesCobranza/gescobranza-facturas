@@ -101,6 +101,19 @@ export default function ImportarHistorico() {
     }
   }
 
+  function descargarOmitidas() {
+    if (!resultado || !resultado.detalleOmitidas || resultado.detalleOmitidas.length === 0) return;
+    const datos = resultado.detalleOmitidas.map((o) => ({
+      'Fila (Excel)': o.fila,
+      'Alta': o.alta,
+      'Motivo': o.motivo,
+    }));
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Omitidas');
+    XLSX.writeFile(wb, 'facturas-omitidas.xlsx');
+  }
+
   return (
     <div className="app">
       <header className="top">
@@ -154,19 +167,27 @@ export default function ImportarHistorico() {
 
       {resultado && (
         <div className="card">
-          <h2>Resultado de la importación</h2>
+          <div className="card-header-row">
+            <h2>Resultado de la importación</h2>
+            {resultado.omitidas > 0 && (
+              <button className="btn btn-ghost btn-sm" onClick={descargarOmitidas}>Descargar Excel de omitidas</button>
+            )}
+          </div>
           <div className="alert ok">✓ {resultado.insertadas} facturas importadas correctamente.</div>
           {resultado.omitidas > 0 && (
             <>
-              <div className="alert error">{resultado.omitidas} filas omitidas — revisa el detalle:</div>
+              <div className="alert error">{resultado.omitidas} filas omitidas en total — descarga el Excel de arriba para verlas todas.</div>
               <table>
                 <thead><tr><th>Fila (Excel)</th><th>Alta</th><th>Motivo</th></tr></thead>
                 <tbody>
-                  {resultado.detalleOmitidas.map((o, i) => (
+                  {resultado.detalleOmitidas.slice(0, 50).map((o, i) => (
                     <tr key={i}><td>{o.fila}</td><td>{o.alta}</td><td>{o.motivo}</td></tr>
                   ))}
                 </tbody>
               </table>
+              {resultado.detalleOmitidas.length > 50 && (
+                <p className="muted">Mostrando las primeras 50 en pantalla — el Excel trae las {resultado.detalleOmitidas.length} completas.</p>
+              )}
             </>
           )}
         </div>
