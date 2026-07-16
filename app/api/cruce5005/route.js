@@ -20,6 +20,12 @@ async function traerTodas(supabase, tabla, filtro) {
   return todas;
 }
 
+// Quita ceros a la izquierda para que "0000092862" y "92862" se reconozcan como el mismo proveedor
+function normalizarProveedor(valor) {
+  const limpio = String(valor || '').trim().replace(/^0+/, '');
+  return limpio || '0';
+}
+
 export async function POST() {
   const supabase = getSupabaseAdmin();
 
@@ -34,7 +40,7 @@ export async function POST() {
   const mapa = {};
   raw.forEach((r) => {
     if (!r.alta || !r.proveedor) return;
-    const key = String(r.alta).trim() + '|' + String(r.proveedor).trim();
+    const key = String(r.alta).trim() + '|' + normalizarProveedor(r.proveedor);
     if (!mapa[key]) mapa[key] = [];
     mapa[key].push({ importe: Number(r.importe) || 0, comprobante: r.comprobante ? String(r.comprobante).trim() : '' });
   });
@@ -48,9 +54,9 @@ export async function POST() {
       actualizaciones.push({ id: f.id, alerta_importe: 'Falta Alta, Proveedor o Importe — no se pudo cruzar contra el 5005' });
       continue;
     }
-    const key = String(f.alta).trim() + '|' + String(f.prov_no).trim();
+    const key = String(f.alta).trim() + '|' + normalizarProveedor(f.prov_no);
     const candidatos = mapa[key];
-    if (!candidatos || candidatos.length === 0) continue; // aún no aparece en el 5005
+    if (!candidatos || candidatos.length === 0) continue;
 
     const importeCapturado = Number(f.importe);
     const exacto = candidatos.find((c) => Math.abs(c.importe - importeCapturado) < 0.01 && c.comprobante);
@@ -59,3 +65,35 @@ export async function POST() {
       actualizaciones.push({ id: f.id, tiene_cr: true, fecha_cr: new Date().toISOString(), comprobante: exacto.comprobante, alerta_importe: null });
       encontrados++;
     } else if (candidatos.length === 1) {
+      const unico = candidatos[0];
+      const upd = { id: f.id };
+      if (unico.comprobante) {
+        upd.tiene_cr = true;
+        upd.fecha_cr = new Date().toISOString();
+        upd.comprobante = unico.comprobante;
+        encontrados++;
+      }
+      if (Math.abs(unico.importe - importeCapturado) >= 0.01) {
+        upd.alerta_importe = `5005 registra $${unico.importe} vs $${importeCapturado} capturado — corrige el importe`;
+        alertasImporte++;
+      }
+      if (Object.keys(upd).length > 1) actualizaciones.push(upd);
+    } else {
+      actualizaciones.push({ id: f.id, alerta_importe: `Hay ${candidatos.length} registros en 5005 con esta Alta+Proveedor y ninguno coincide en importe — revisar a mano` });
+      ambiguos++;
+    }
+  }
+
+  const TAMANO_BLOQUE = 200;
+  for (let i = 0; i < actualizaciones.length; i += TAMANO_BLOQUE) {
+    const bloque = actualizaciones.slice(i, i + TAMANO_BLOQUE);
+    await Promise.all(
+      bloque.map((upd) => {
+        const { id, ...campos } = upd;
+        return supabase.from('facturas').update(campos).eq('id', id);
+      })
+    );
+  }
+
+  return NextResponse.json({ ok: true, encontrados, alertasImporte, ambiguos, incompletos });
+}
