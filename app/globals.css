@@ -58,3 +58,25 @@ table{width:100%; border-collapse:collapse; font-size:12.8px;}
 th{text-align:left; padding:9px 10px; background:var(--bg); color:var(--text-soft); font-weight:600; font-size:11px; text-transform:uppercase; border-bottom:1px solid var(--line);}
 td{padding:9px 10px; border-bottom:1px solid var(--line);}
 .muted{color:var(--text-soft); font-size:12px;}
+.kpi-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:16px;}
+@media(max-width:800px){.kpi-grid{grid-template-columns:1fr 1fr;}}
+.kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px;}
+.kpi .num{font-size:26px; font-weight:700; color:var(--navy);}
+.kpi .lbl{font-size:12px; color:var(--text-soft); margin-top:2px;}
+.tag{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600;}
+.tag-green{background:var(--green-soft); color:var(--green);}
+.tag-amber{background:var(--amber-soft); color:var(--amber);}
+.bar-row{display:flex; align-items:center; gap:10px; margin-bottom:8px;}
+.bar-label{width:130px; font-size:12.5px;}
+.bar-track{flex:1; background:var(--bg); border-radius:6px; height:14px; overflow:hidden;}
+.bar-fill{background:var(--blue); height:100%;}
+.bar-val{width:34px; text-align:right; font-weight:600;}
+.toolbar{display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center;}
+.row-inline{display:flex; gap:8px; margin-bottom:12px;}
+.row-inline input{flex:1;}
+.catalog-list{display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto;}
+.catalog-item{display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:var(--bg); border-radius:7px; font-size:12.8px;}
+.btn-ghost{background:transparent; color:var(--navy-2); border:1px solid var(--line);}
+.btn-danger{background:var(--red-soft); color:var(--red); border:1px solid #f2cccc;}
+.btn-sm{padding:5px 10px; font-size:12px; border-radius:6px;}
+.card-header-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;}
