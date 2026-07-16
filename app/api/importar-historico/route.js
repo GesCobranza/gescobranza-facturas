@@ -9,6 +9,13 @@ function trocear(arr, tamano) {
   return bloques;
 }
 
+// Reconoce "OOAD 23", "OOAD - 23", "OOAD-23", "UMAE 2202", etc. — sin importar la puntuación exacta.
+function claveDelegacion(texto) {
+  const m = String(texto || '').match(/(OOAD|UMAE)\D{0,5}(\d+)/i);
+  if (!m) return null;
+  return m[1].toUpperCase() + '-' + String(parseInt(m[2], 10));
+}
+
 export async function POST(request) {
   const body = await request.json();
   const filas = Array.isArray(body.filas) ? body.filas : [];
@@ -20,8 +27,13 @@ export async function POST(request) {
 
   const { data: delegacionesData, error: errDeleg } = await supabase.from('catalogo_delegaciones').select('*');
   if (errDeleg) return NextResponse.json({ ok: false, error: errDeleg.message }, { status: 500 });
-  const delegMap = {};
-  delegacionesData.forEach((d) => { delegMap[d.nombre] = d.codigo.split(','); });
+
+  // Índice por clave normalizada (tipo + número), no por texto exacto
+  const indiceDeleg = {};
+  delegacionesData.forEach((d) => {
+    const clave = claveDelegacion(d.nombre);
+    if (clave) indiceDeleg[clave] = d;
+  });
 
   const candidatos = [];
   const omitidas = [];
@@ -30,7 +42,7 @@ export async function POST(request) {
   filas.forEach((f, idx) => {
     const grupo = String(f.grupo || '').trim();
     const empresa = String(f.empresa || '').trim();
-    const delegacion = String(f.delegacion || '').trim();
+    const delegacionTexto = String(f.delegacion || '').trim();
     const alta = String(f.alta || '').trim();
     const importe = Number(f.importe);
     const capturista = String(f.capturista || '').trim() || 'Importación histórica';
@@ -39,7 +51,7 @@ export async function POST(request) {
     const pdf = String(f.pdf || alta).trim();
     const fila = idx + 2;
 
-    if (!grupo || !empresa || !delegacion || !alta || !importe || importe <= 0) {
+    if (!grupo || !empresa || !delegacionTexto || !alta || !importe || importe <= 0) {
       omitidas.push({ fila, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).' });
       return;
     }
@@ -47,13 +59,16 @@ export async function POST(request) {
       omitidas.push({ fila, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.' });
       return;
     }
-    const codigos = delegMap[delegacion];
-    if (!codigos) {
-      omitidas.push({ fila, alta, motivo: `La delegación "${delegacion}" no existe en tu catálogo — revisa el nombre exacto.` });
+
+    const clave = claveDelegacion(delegacionTexto);
+    const deleg = clave ? indiceDeleg[clave] : null;
+    if (!deleg) {
+      omitidas.push({ fila, alta, motivo: `No reconozco la delegación "${delegacionTexto}" — no coincide con ningún OOAD/UMAE de tu catálogo.` });
       return;
     }
+    const codigos = deleg.codigo.split(',');
     if (!codigos.some((c) => alta.startsWith(c))) {
-      omitidas.push({ fila, alta, motivo: `El alta no coincide con el código de "${delegacion}" (esperado: ${codigos.join(' o ')}).` });
+      omitidas.push({ fila, alta, motivo: `El alta no coincide con el código de "${deleg.nombre}" (esperado: ${codigos.join(' o ')}).` });
       return;
     }
 
@@ -61,7 +76,7 @@ export async function POST(request) {
     candidatos.push({
       fila,
       payload: {
-        grupo, empresa, delegacion, pdf, num_factura: pdf,
+        grupo, empresa, delegacion: deleg.nombre, pdf, num_factura: pdf,
         prov_no: provNo || null, prov_nombre: empresa,
         alta, importe, capturista,
         fecha_recepcion: fechaRecepcion,
