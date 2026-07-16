@@ -35,6 +35,12 @@ export default function Home() {
   const [gFiltroDeleg, setGFiltroDeleg] = useState('');
   const [gFiltroEnvio, setGFiltroEnvio] = useState('');
 
+  // ---- Cruce 5005 ----
+  const [raw5005Texto, setRaw5005Texto] = useState('');
+  const [raw5005Mensaje, setRaw5005Mensaje] = useState('');
+  const [cruceMensaje, setCruceMensaje] = useState('');
+  const [cargandoCruce, setCargandoCruce] = useState(false);
+
   useEffect(() => { cargarCatalogos(); }, []);
   useEffect(() => {
     if (tab === 'consulta' || tab === 'panel' || tab === 'gestores') cargarFacturas();
@@ -183,6 +189,51 @@ export default function Home() {
     await cargarFacturas();
   }
 
+  // ---- Cruce 5005: acciones ----
+  function parseRaw5005(texto) {
+    const lineas = texto.trim().split('\n').filter((l) => l.trim());
+    const filas = [];
+    for (const linea of lineas) {
+      const partes = linea.split('\t');
+      if (partes.length < 3) continue;
+      const [proveedor, altaCol, importeTxt, comprobante] = partes;
+      const importeNum = parseFloat(String(importeTxt).replace(/[^0-9.\-]/g, ''));
+      if (isNaN(importeNum)) continue; // probablemente encabezado
+      filas.push({ proveedor: (proveedor || '').trim(), alta: (altaCol || '').trim(), importe: importeNum, comprobante: (comprobante || '').trim() });
+    }
+    return filas;
+  }
+
+  async function cargarRaw5005() {
+    const filas = parseRaw5005(raw5005Texto);
+    if (filas.length === 0) {
+      setRaw5005Mensaje('No se detectaron filas válidas — revisa que hayas pegado Proveedor, Alta, Importe y Comprobante separados por tabulador (copiado directo de Excel).');
+      return;
+    }
+    setRaw5005Mensaje('Cargando…');
+    const res = await fetch('/api/raw5005', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filas }),
+    });
+    const data = await res.json();
+    setRaw5005Mensaje(data.ok ? `Cargadas ${data.cargadas} filas del 5005.` : `Error: ${data.error}`);
+  }
+
+  async function cruzarCon5005() {
+    setCargandoCruce(true);
+    setCruceMensaje('Cruzando…');
+    const res = await fetch('/api/cruce5005', { method: 'POST' });
+    const data = await res.json();
+    setCargandoCruce(false);
+    if (data.ok) {
+      setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
+      cargarFacturas();
+    } else {
+      setCruceMensaje(`Error: ${data.error}`);
+    }
+  }
+
   // ---- Panel KPI: cálculos ----
   const total = facturas.length;
   const conCR = facturas.filter((f) => f.tiene_cr);
@@ -234,6 +285,7 @@ export default function Home() {
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
         <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
         <button className={tab === 'gestores' ? 'active' : ''} onClick={() => setTab('gestores')}>Seguimiento Envío</button>
+        <button className={tab === 'cruce' ? 'active' : ''} onClick={() => setTab('cruce')}>Cruce 5005</button>
         <button className={tab === 'catalogos' ? 'active' : ''} onClick={() => setTab('catalogos')}>Catálogos</button>
       </nav>
 
@@ -309,13 +361,17 @@ export default function Home() {
         <div className="card">
           <h2>Registros capturados</h2>
           <table>
-            <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th></tr></thead>
+            <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th></tr></thead>
             <tbody>
               {facturas.map((f) => (
                 <tr key={f.id}>
                   <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                   <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                   <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                  <td>
+                    {f.comprobante || '—'}
+                    {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -421,6 +477,38 @@ export default function Home() {
               </tbody>
             </table>
             <p className="muted">{filasGestores.length} facturas pendientes de CR con estos filtros.</p>
+          </div>
+        </>
+      )}
+
+      {tab === 'cruce' && (
+        <>
+          <div className="card">
+            <h2>1. Cargar el reporte 5005</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              De tu archivo del 5005, copia las columnas <b>No. Proveedor, Num Ent Alm, Importe, Comprobante</b> (en ese orden)
+              y pégalas aquí abajo directo desde Excel — cada 5005 nuevo reemplaza al anterior completo.
+            </p>
+            <textarea
+              value={raw5005Texto}
+              onChange={(e) => setRaw5005Texto(e.target.value)}
+              placeholder="Pega aquí las 4 columnas copiadas de Excel…"
+              style={{ width: '100%', minHeight: 160, padding: 10, border: '1px solid var(--line)', borderRadius: 7, fontFamily: 'monospace', fontSize: 12 }}
+            />
+            {raw5005Mensaje && <p className="muted" style={{ marginTop: 8 }}>{raw5005Mensaje}</p>}
+            <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={cargarRaw5005}>Cargar datos del 5005</button>
+          </div>
+
+          <div className="card">
+            <h2>2. Cruzar</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Compara Alta + Proveedor + Importe contra lo que acabas de cargar. Si el importe no coincide pero la combinación
+              es única, marca el CR igual y te avisa que corrijas el importe — nunca te bloquea el resultado.
+            </p>
+            <button className="btn btn-primary" onClick={cruzarCon5005} disabled={cargandoCruce}>
+              {cargandoCruce ? 'Cruzando…' : 'Cruzar con 5005'}
+            </button>
+            {cruceMensaje && <p className="muted" style={{ marginTop: 10 }}>{cruceMensaje}</p>}
           </div>
         </>
       )}
