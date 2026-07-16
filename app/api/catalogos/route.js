@@ -24,3 +24,49 @@ export async function GET(request) {
 
   return NextResponse.json({ grupos, delegaciones });
 }
+
+export async function POST(request) {
+  const body = await request.json();
+  const supabase = getSupabaseAdmin();
+
+  if (body.tipo === 'empresa') {
+    const { grupo, nombre, numero } = body;
+    if (!grupo || !nombre || !numero) {
+      return NextResponse.json({ ok: false, error: 'Faltan datos de la empresa.' });
+    }
+    const { error } = await supabase.from('catalogo_empresas').insert({ grupo, nombre, numero });
+    if (error) return NextResponse.json({ ok: false, error: error.message });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.tipo === 'delegacion') {
+    const { codigo, nombre } = body;
+    if (!codigo || !nombre) {
+      return NextResponse.json({ ok: false, error: 'Faltan datos de la delegación.' });
+    }
+    const { error } = await supabase.from('catalogo_delegaciones').insert({ codigo, nombre });
+    if (error) return NextResponse.json({ ok: false, error: error.message });
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ ok: false, error: 'Tipo no reconocido.' });
+}
+
+export async function DELETE(request) {
+  const body = await request.json();
+  const supabase = getSupabaseAdmin();
+
+  if (body.tipo === 'empresa') {
+    const { error } = await supabase.from('catalogo_empresas').delete().eq('numero', body.numero);
+    if (error) return NextResponse.json({ ok: false, error: error.message });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.tipo === 'delegacion') {
+    const { error } = await supabase.from('catalogo_delegaciones').delete().eq('nombre', body.nombre);
+    if (error) return NextResponse.json({ ok: false, error: error.message });
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ ok: false, error: 'Tipo no reconocido.' });
+}
