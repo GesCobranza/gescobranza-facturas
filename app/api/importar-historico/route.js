@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
+export const maxDuration = 60;
+
+function trocear(arr, tamano) {
+  const bloques = [];
+  for (let i = 0; i < arr.length; i += tamano) bloques.push(arr.slice(i, i + tamano));
+  return bloques;
+}
+
 export async function POST(request) {
   const body = await request.json();
   const filas = Array.isArray(body.filas) ? body.filas : [];
@@ -15,11 +23,7 @@ export async function POST(request) {
   const delegMap = {};
   delegacionesData.forEach((d) => { delegMap[d.nombre] = d.codigo.split(','); });
 
-  const { data: existentesData, error: errExist } = await supabase.from('facturas').select('alta');
-  if (errExist) return NextResponse.json({ ok: false, error: errExist.message }, { status: 500 });
-  const altasExistentes = new Set(existentesData.map((f) => String(f.alta).toLowerCase()));
-
-  const paraInsertar = [];
+  const candidatos = [];
   const omitidas = [];
   const altasEnEsteArchivo = new Set();
 
@@ -33,47 +37,69 @@ export async function POST(request) {
     const fechaRecepcion = f.fechaRecepcion || null;
     const provNo = String(f.provNo || '').trim();
     const pdf = String(f.pdf || alta).trim();
+    const fila = idx + 2;
 
     if (!grupo || !empresa || !delegacion || !alta || !importe || importe <= 0) {
-      omitidas.push({ fila: idx + 2, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).' });
-      return;
-    }
-    if (altasExistentes.has(alta.toLowerCase())) {
-      omitidas.push({ fila: idx + 2, alta, motivo: 'Ese número de alta ya existía en el sistema antes de esta importación.' });
+      omitidas.push({ fila, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).' });
       return;
     }
     if (altasEnEsteArchivo.has(alta.toLowerCase())) {
-      omitidas.push({ fila: idx + 2, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.' });
+      omitidas.push({ fila, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.' });
       return;
     }
     const codigos = delegMap[delegacion];
     if (!codigos) {
-      omitidas.push({ fila: idx + 2, alta, motivo: `La delegación "${delegacion}" no existe en tu catálogo — revisa el nombre exacto.` });
+      omitidas.push({ fila, alta, motivo: `La delegación "${delegacion}" no existe en tu catálogo — revisa el nombre exacto.` });
       return;
     }
     if (!codigos.some((c) => alta.startsWith(c))) {
-      omitidas.push({ fila: idx + 2, alta, motivo: `El alta no coincide con el código de "${delegacion}" (esperado: ${codigos.join(' o ')}).` });
+      omitidas.push({ fila, alta, motivo: `El alta no coincide con el código de "${delegacion}" (esperado: ${codigos.join(' o ')}).` });
       return;
     }
 
     altasEnEsteArchivo.add(alta.toLowerCase());
-    paraInsertar.push({
-      grupo, empresa, delegacion, pdf, num_factura: pdf,
-      prov_no: provNo || null, prov_nombre: empresa,
-      alta, importe, capturista,
-      fecha_recepcion: fechaRecepcion,
-      tiene_cr: false,
+    candidatos.push({
+      fila,
+      payload: {
+        grupo, empresa, delegacion, pdf, num_factura: pdf,
+        prov_no: provNo || null, prov_nombre: empresa,
+        alta, importe, capturista,
+        fecha_recepcion: fechaRecepcion,
+        tiene_cr: false,
+      },
     });
   });
 
-  if (paraInsertar.length > 0) {
-    const { error: errInsert } = await supabase.from('facturas').insert(paraInsertar);
-    if (errInsert) return NextResponse.json({ ok: false, error: errInsert.message }, { status: 500 });
+  let insertadas = 0;
+  const bloques = trocear(candidatos, 500);
+
+  for (const bloque of bloques) {
+    const payloads = bloque.map((c) => c.payload);
+    const { data: filasGuardadas, error: errUpsert } = await supabase
+      .from('facturas')
+      .upsert(payloads, { onConflict: 'alta', ignoreDuplicates: true })
+      .select('alta');
+
+    if (errUpsert) {
+      return NextResponse.json({
+        ok: false,
+        error: `Se importaron ${insertadas} filas antes de un error. Detalle: ${errUpsert.message}`,
+      }, { status: 500 });
+    }
+
+    const altasGuardadas = new Set((filasGuardadas || []).map((r) => r.alta));
+    bloque.forEach((c) => {
+      if (altasGuardadas.has(c.payload.alta)) {
+        insertadas++;
+      } else {
+        omitidas.push({ fila: c.fila, alta: c.payload.alta, motivo: 'Ese número de alta ya existía en el sistema.' });
+      }
+    });
   }
 
   return NextResponse.json({
     ok: true,
-    insertadas: paraInsertar.length,
+    insertadas,
     omitidas: omitidas.length,
     detalleOmitidas: omitidas,
   });
