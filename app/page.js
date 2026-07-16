@@ -237,14 +237,26 @@ export default function Home() {
         return;
       }
 
-      setRaw5005Mensaje(`Subiendo ${filas.length} filas…`);
-      const res = await fetch('/api/raw5005', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filas }),
-      });
-      const data = await res.json();
-      setRaw5005Mensaje(data.ok ? `✓ Archivo cargado: ${data.cargadas} filas del 5005. Ya puedes cruzar.` : `Error: ${data.error}`);
+     const TAMANO_BLOQUE = 2000;
+      const bloques = [];
+      for (let i = 0; i < filas.length; i += TAMANO_BLOQUE) bloques.push(filas.slice(i, i + TAMANO_BLOQUE));
+
+      let totalCargadas = 0;
+      for (let i = 0; i < bloques.length; i++) {
+        setRaw5005Mensaje(`Subiendo bloque ${i + 1} de ${bloques.length} (${filas.length} filas en total)…`);
+        const res = await fetch('/api/raw5005', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filas: bloques[i], primerBloque: i === 0 }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          setRaw5005Mensaje(`Error en el bloque ${i + 1}: ${data.error}. Se cargaron ${totalCargadas} filas antes del error.`);
+          return;
+        }
+        totalCargadas += data.cargadas;
+      }
+      setRaw5005Mensaje(`✓ Archivo cargado: ${totalCargadas} filas del 5005. Ya puedes cruzar.`);
     } catch (err) {
       setRaw5005Mensaje('Error leyendo el archivo: ' + err.message);
     }
