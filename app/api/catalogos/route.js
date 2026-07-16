@@ -6,67 +6,96 @@ export async function GET(request) {
   const grupoFiltro = searchParams.get('grupo') || null;
   const supabase = getSupabaseAdmin();
 
-  let empresasQuery = supabase.from('catalogo_empresas').select('*');
-  if (grupoFiltro) empresasQuery = empresasQuery.eq('grupo', grupoFiltro);
-  const { data: empresasData, error: err1 } = await empresasQuery;
-  if (err1) return NextResponse.json({ error: err1.message }, { status: 500 });
+  let query = supabase.from('facturas').select('*').order('fecha_captura', { ascending: false });
+  if (grupoFiltro) query = query.eq('grupo', grupoFiltro);
 
-  const { data: delegacionesData, error: err2 } = await supabase.from('catalogo_delegaciones').select('*');
-  if (err2) return NextResponse.json({ error: err2.message }, { status: 500 });
-
-  const gruposMap = {};
-  empresasData.forEach((e) => {
-    if (!gruposMap[e.grupo]) gruposMap[e.grupo] = [];
-    gruposMap[e.grupo].push({ nombre: e.nombre, numero: e.numero });
-  });
-  const grupos = Object.keys(gruposMap).map((nombre) => ({ nombre, empresas: gruposMap[nombre] }));
-  const delegaciones = delegacionesData.map((d) => ({ codigo: d.codigo, nombre: d.nombre }));
-
-  return NextResponse.json({ grupos, delegaciones });
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ facturas: data });
 }
 
 export async function POST(request) {
   const body = await request.json();
   const supabase = getSupabaseAdmin();
 
-  if (body.tipo === 'empresa') {
-    const { grupo, nombre, numero } = body;
-    if (!grupo || !nombre || !numero) {
-      return NextResponse.json({ ok: false, error: 'Faltan datos de la empresa.' });
-    }
-    const { error } = await supabase.from('catalogo_empresas').insert({ grupo, nombre, numero });
-    if (error) return NextResponse.json({ ok: false, error: error.message });
-    return NextResponse.json({ ok: true });
+  const alta = String(body.alta || '').trim();
+  const pdf = String(body.pdf || '').trim();
+  const provNo = body.provNo;
+  const importe = Number(body.importe);
+
+  if (!alta || !pdf || !provNo || !importe || importe <= 0) {
+    return NextResponse.json({ ok: false, error: 'Completa PDF, empresa, alta e importe (mayor a $0.00).' });
   }
 
-  if (body.tipo === 'delegacion') {
-    const { codigo, nombre } = body;
-    if (!codigo || !nombre) {
-      return NextResponse.json({ ok: false, error: 'Faltan datos de la delegación.' });
-    }
-    const { error } = await supabase.from('catalogo_delegaciones').insert({ codigo, nombre });
-    if (error) return NextResponse.json({ ok: false, error: error.message });
-    return NextResponse.json({ ok: true });
+  const { data: existentes, error: errDup } = await supabase
+    .from('facturas')
+    .select('id')
+    .ilike('alta', alta);
+  if (errDup) return NextResponse.json({ ok: false, error: errDup.message }, { status: 500 });
+  if (existentes && existentes.length > 0) {
+    return NextResponse.json({ ok: false, error: 'Ese número de alta ya fue capturado antes — revisa si es duplicado.' });
   }
 
-  return NextResponse.json({ ok: false, error: 'Tipo no reconocido.' });
+  const { data: deleg, error: errDeleg } = await supabase
+    .from('catalogo_delegaciones')
+    .select('*')
+    .eq('nombre', body.delegacion)
+    .maybeSingle();
+  if (errDeleg) return NextResponse.json({ ok: false, error: errDeleg.message }, { status: 500 });
+  if (deleg) {
+    const codigos = deleg.codigo.split(',');
+    const cumple = codigos.some((c) => alta.startsWith(c));
+    if (!cumple) {
+      return NextResponse.json({
+        ok: false,
+        error: `El número de alta debe iniciar con ${codigos.join(' o ')} para coincidir con "${deleg.nombre}". No se guardó.`,
+      });
+    }
+  }
+
+  const nuevaFactura = {
+    grupo: body.grupo,
+    empresa: body.empresa,
+    delegacion: body.delegacion,
+    pdf,
+    num_factura: body.numFactura || pdf,
+    prov_no: provNo,
+    prov_nombre: body.provNombre,
+    alta,
+    importe,
+    capturista: body.capturista,
+    fecha_recepcion: body.fechaRecepcion || null,
+  };
+
+  const { error: errInsert } = await supabase.from('facturas').insert(nuevaFactura);
+  if (errInsert) return NextResponse.json({ ok: false, error: errInsert.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(request) {
+export async function PATCH(request) {
   const body = await request.json();
   const supabase = getSupabaseAdmin();
 
-  if (body.tipo === 'empresa') {
-    const { error } = await supabase.from('catalogo_empresas').delete().eq('numero', body.numero);
+  if (body.accion === 'marcarEnviadas') {
+    const ids = body.ids || [];
+    if (ids.length === 0) return NextResponse.json({ ok: false, error: 'No hay facturas seleccionadas.' });
+    const { error } = await supabase
+      .from('facturas')
+      .update({ enviada_gestor: true, fecha_envio: new Date().toISOString() })
+      .in('id', ids);
+    if (error) return NextResponse.json({ ok: false, error: error.message });
+    return NextResponse.json({ ok: true, marcados: ids.length });
+  }
+
+  if (body.accion === 'quitarEnviada') {
+    const { error } = await supabase
+      .from('facturas')
+      .update({ enviada_gestor: false, fecha_envio: null })
+      .eq('id', body.id);
     if (error) return NextResponse.json({ ok: false, error: error.message });
     return NextResponse.json({ ok: true });
   }
 
-  if (body.tipo === 'delegacion') {
-    const { error } = await supabase.from('catalogo_delegaciones').delete().eq('nombre', body.nombre);
-    if (error) return NextResponse.json({ ok: false, error: error.message });
-    return NextResponse.json({ ok: true });
-  }
-
-  return NextResponse.json({ ok: false, error: 'Tipo no reconocido.' });
+  return NextResponse.json({ ok: false, error: 'Acción no reconocida.' });
 }
