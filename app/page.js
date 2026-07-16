@@ -6,6 +6,7 @@ export default function Home() {
   const [catalogos, setCatalogos] = useState({ grupos: [], delegaciones: [] });
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [seleccionados, setSeleccionados] = useState(new Set());
 
   // ---- Captura ----
   const [grupo, setGrupo] = useState('');
@@ -30,12 +31,13 @@ export default function Home() {
   const [catCodigo, setCatCodigo] = useState('');
   const [catDelegNombre, setCatDelegNombre] = useState('');
 
-  useEffect(() => {
-    cargarCatalogos();
-  }, []);
+  // ---- Gestores (seguimiento de envío) ----
+  const [gFiltroDeleg, setGFiltroDeleg] = useState('');
+  const [gFiltroEnvio, setGFiltroEnvio] = useState('');
 
+  useEffect(() => { cargarCatalogos(); }, []);
   useEffect(() => {
-    if (tab === 'consulta' || tab === 'panel') cargarFacturas();
+    if (tab === 'consulta' || tab === 'panel' || tab === 'gestores') cargarFacturas();
   }, [tab]);
 
   async function cargarCatalogos() {
@@ -74,10 +76,8 @@ export default function Home() {
   let altaOk = true;
   if (deleg) {
     const codigos = deleg.codigo.split(',');
-    if (!alta) {
-      altaHint = `Debe iniciar con ${codigos.join(' o ')}`;
-      altaOk = false;
-    } else {
+    if (!alta) { altaHint = `Debe iniciar con ${codigos.join(' o ')}`; altaOk = false; }
+    else {
       altaOk = codigos.some((c) => alta.startsWith(c));
       altaHint = altaOk ? `✓ Coincide con ${codigos.join(' o ')}` : `✗ Debe iniciar con ${codigos.join(' o ')}`;
     }
@@ -156,6 +156,33 @@ export default function Home() {
     await cargarCatalogos();
   }
 
+  // ---- Gestores: acciones ----
+  function toggleSeleccion(id) {
+    setSeleccionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+  async function marcarSeleccionadasComoEnviadas() {
+    if (seleccionados.size === 0) return;
+    await fetch('/api/facturas', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'marcarEnviadas', ids: Array.from(seleccionados) }),
+    });
+    setSeleccionados(new Set());
+    await cargarFacturas();
+  }
+  async function quitarEnviada(id) {
+    await fetch('/api/facturas', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'quitarEnviada', id }),
+    });
+    await cargarFacturas();
+  }
+
   // ---- Panel KPI: cálculos ----
   const total = facturas.length;
   const conCR = facturas.filter((f) => f.tiene_cr);
@@ -167,6 +194,26 @@ export default function Home() {
 
   const grupoCatObj = catalogos.grupos.find((g) => g.nombre === catGrupoSel);
   const empresasCat = grupoCatObj ? grupoCatObj.empresas : [];
+
+  // ---- Gestores: datos derivados ----
+  const pendientes = facturas.filter((f) => !f.tiene_cr && !f.enviada_gestor);
+  const pendientesPorDeleg = {};
+  pendientes.forEach((f) => {
+    if (!pendientesPorDeleg[f.delegacion]) pendientesPorDeleg[f.delegacion] = { n: 0, importe: 0 };
+    pendientesPorDeleg[f.delegacion].n++;
+    pendientesPorDeleg[f.delegacion].importe += Number(f.importe) || 0;
+  });
+  const maxPend = Math.max(1, ...Object.values(pendientesPorDeleg).map((v) => v.n));
+
+  const esperando = facturas
+    .filter((f) => f.enviada_gestor && !f.tiene_cr)
+    .map((f) => ({ ...f, dias: Math.floor((Date.now() - new Date(f.fecha_envio)) / 86400000) }))
+    .sort((a, b) => b.dias - a.dias);
+
+  let filasGestores = facturas.filter((f) => !f.tiene_cr);
+  if (gFiltroDeleg) filasGestores = filasGestores.filter((f) => f.delegacion === gFiltroDeleg);
+  if (gFiltroEnvio === 'enviada') filasGestores = filasGestores.filter((f) => f.enviada_gestor);
+  if (gFiltroEnvio === 'noenviada') filasGestores = filasGestores.filter((f) => !f.enviada_gestor);
 
   if (cargando) return <div className="app"><p>Cargando…</p></div>;
 
@@ -186,6 +233,7 @@ export default function Home() {
         <button className={tab === 'captura' ? 'active' : ''} onClick={() => setTab('captura')}>Captura</button>
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
         <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
+        <button className={tab === 'gestores' ? 'active' : ''} onClick={() => setTab('gestores')}>Seguimiento Envío</button>
         <button className={tab === 'catalogos' ? 'active' : ''} onClick={() => setTab('catalogos')}>Catálogos</button>
       </nav>
 
@@ -193,7 +241,6 @@ export default function Home() {
         <div className="card">
           <h2>Nueva factura</h2>
           {mensaje && <div className={`alert ${mensajeTipo}`}>{mensaje}</div>}
-
           <div className="grid">
             <div className="field">
               <label>Grupo / cliente</label>
@@ -216,7 +263,6 @@ export default function Home() {
               </select>
             </div>
           </div>
-
           <div className="grid">
             <div className="field">
               <label>No. de PDF</label>
@@ -231,7 +277,6 @@ export default function Home() {
               <input type="date" value={fechaRecepcion} onChange={(e) => setFechaRecepcion(e.target.value)} />
             </div>
           </div>
-
           <div className="grid">
             <div className="field">
               <label>Proveedor</label>
@@ -247,7 +292,6 @@ export default function Home() {
               <span className="hint">{altaHint}</span>
             </div>
           </div>
-
           <div className="field" style={{ maxWidth: 220, marginBottom: 16 }}>
             <label>Capturista</label>
             <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
@@ -255,7 +299,6 @@ export default function Home() {
               <option value="Mariano">Mariano</option>
             </select>
           </div>
-
           <button className="btn btn-primary" onClick={guardar} disabled={guardando}>
             {guardando ? 'Guardando…' : 'Guardar factura'}
           </button>
@@ -266,16 +309,11 @@ export default function Home() {
         <div className="card">
           <h2>Registros capturados</h2>
           <table>
-            <thead>
-              <tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th></tr>
-            </thead>
+            <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th></tr></thead>
             <tbody>
               {facturas.map((f) => (
                 <tr key={f.id}>
-                  <td>{f.alta}</td>
-                  <td>{f.grupo}</td>
-                  <td>{f.empresa}</td>
-                  <td>{f.delegacion}</td>
+                  <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                   <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                   <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                 </tr>
@@ -308,6 +346,85 @@ export default function Home() {
         </>
       )}
 
+      {tab === 'gestores' && (
+        <>
+          <div className="card">
+            <h2>Pendientes por enviar, por delegación</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Sin contra recibo y aún no enviadas a ningún gestor.</p>
+            {Object.keys(pendientesPorDeleg).length === 0 && <p className="muted">No hay pendientes por enviar.</p>}
+            {Object.entries(pendientesPorDeleg).sort((a, b) => b[1].n - a[1].n).map(([d, v]) => (
+              <div className="bar-row" key={d} style={{ cursor: 'pointer' }} onClick={() => { setGFiltroDeleg(d); setGFiltroEnvio('noenviada'); }}>
+                <div className="bar-label" style={{ width: 220 }}>{d}</div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: (v.n / maxPend) * 100 + '%' }} /></div>
+                <div className="bar-val">{v.n}</div>
+                <div className="muted" style={{ width: 120, textAlign: 'right' }}>${v.importe.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="card">
+            <h2>Enviadas — esperando contra recibo</h2>
+            {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
+            {esperando.length > 0 && (
+              <table>
+                <thead><tr><th>Alta</th><th>Delegación</th><th>Importe</th><th>Días esperando</th></tr></thead>
+                <tbody>
+                  {esperando.map((f) => (
+                    <tr key={f.id}>
+                      <td>{f.alta}</td><td>{f.delegacion}</td>
+                      <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                      <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>Detalle y marcar envío</h2>
+            <div className="toolbar">
+              <select value={gFiltroDeleg} onChange={(e) => setGFiltroDeleg(e.target.value)}>
+                <option value="">Todas las delegaciones</option>
+                {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
+              </select>
+              <select value={gFiltroEnvio} onChange={(e) => setGFiltroEnvio(e.target.value)}>
+                <option value="">Todas — enviadas y no enviadas</option>
+                <option value="noenviada">Aún no enviada</option>
+                <option value="enviada">Ya enviada, esperando CR</option>
+              </select>
+            </div>
+            {seleccionados.size > 0 && (
+              <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span>{seleccionados.size} seleccionada(s)</span>
+                <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas a gestor</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
+              </div>
+            )}
+            <table>
+              <thead><tr><th></th><th>Alta</th><th>Delegación</th><th>Importe</th><th>Envío</th></tr></thead>
+              <tbody>
+                {filasGestores.map((f) => (
+                  <tr key={f.id}>
+                    <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
+                    <td>{f.alta}</td><td>{f.delegacion}</td>
+                    <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                    <td>{f.enviada_gestor
+                      ? <>
+                          <span className="tag" style={{ background: 'var(--blue-soft)', color: 'var(--blue)' }}>Enviada</span>{' '}
+                          <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
+                        </>
+                      : <span className="muted">Sin enviar</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="muted">{filasGestores.length} facturas pendientes de CR con estos filtros.</p>
+          </div>
+        </>
+      )}
+
       {tab === 'catalogos' && (
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div className="card">
@@ -336,7 +453,6 @@ export default function Home() {
               ))}
             </div>
           </div>
-
           <div className="card">
             <h2>Delegaciones / OOAD-UMAE</h2>
             <div className="row-inline">
