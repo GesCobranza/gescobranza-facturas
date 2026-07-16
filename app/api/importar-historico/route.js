@@ -9,7 +9,6 @@ function trocear(arr, tamano) {
   return bloques;
 }
 
-// Reconoce "OOAD 23", "OOAD - 23", "OOAD-23", "UMAE 2202", etc. — sin importar la puntuación exacta.
 function claveDelegacion(texto) {
   const m = String(texto || '').match(/(OOAD|UMAE)\D{0,5}(\d+)/i);
   if (!m) return null;
@@ -28,7 +27,6 @@ export async function POST(request) {
   const { data: delegacionesData, error: errDeleg } = await supabase.from('catalogo_delegaciones').select('*');
   if (errDeleg) return NextResponse.json({ ok: false, error: errDeleg.message }, { status: 500 });
 
-  // Índice por clave normalizada (tipo + número), no por texto exacto
   const indiceDeleg = {};
   delegacionesData.forEach((d) => {
     const clave = claveDelegacion(d.nombre);
