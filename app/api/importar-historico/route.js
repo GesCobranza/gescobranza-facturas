@@ -38,8 +38,12 @@ export async function POST(request) {
       omitidas.push({ fila: idx + 2, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).' });
       return;
     }
-    if (altasExistentes.has(alta.toLowerCase()) || altasEnEsteArchivo.has(alta.toLowerCase())) {
-      omitidas.push({ fila: idx + 2, alta, motivo: 'Número de alta duplicado (ya existe en el sistema o repetido en el archivo).' });
+    if (altasExistentes.has(alta.toLowerCase())) {
+      omitidas.push({ fila: idx + 2, alta, motivo: 'Ese número de alta ya existía en el sistema antes de esta importación.' });
+      return;
+    }
+    if (altasEnEsteArchivo.has(alta.toLowerCase())) {
+      omitidas.push({ fila: idx + 2, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.' });
       return;
     }
     const codigos = delegMap[delegacion];
@@ -71,6 +75,6 @@ export async function POST(request) {
     ok: true,
     insertadas: paraInsertar.length,
     omitidas: omitidas.length,
-    detalleOmitidas: omitidas.slice(0, 50),
+    detalleOmitidas: omitidas,
   });
 }
