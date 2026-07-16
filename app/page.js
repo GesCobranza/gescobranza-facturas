@@ -7,6 +7,7 @@ export default function Home() {
   const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
 
+  // ---- Captura ----
   const [grupo, setGrupo] = useState('');
   const [empresaNumero, setEmpresaNumero] = useState('');
   const [delegacion, setDelegacion] = useState('');
@@ -21,12 +22,20 @@ export default function Home() {
   const [mensajeTipo, setMensajeTipo] = useState('');
   const [guardando, setGuardando] = useState(false);
 
+  // ---- Catalogos ----
+  const [catGrupoSel, setCatGrupoSel] = useState('');
+  const [catGrupoNuevo, setCatGrupoNuevo] = useState('');
+  const [catEmpresaNombre, setCatEmpresaNombre] = useState('');
+  const [catEmpresaNumero, setCatEmpresaNumero] = useState('');
+  const [catCodigo, setCatCodigo] = useState('');
+  const [catDelegNombre, setCatDelegNombre] = useState('');
+
   useEffect(() => {
     cargarCatalogos();
   }, []);
 
   useEffect(() => {
-    if (tab === 'consulta') cargarFacturas();
+    if (tab === 'consulta' || tab === 'panel') cargarFacturas();
   }, [tab]);
 
   async function cargarCatalogos() {
@@ -34,7 +43,10 @@ export default function Home() {
     const res = await fetch('/api/catalogos');
     const data = await res.json();
     setCatalogos(data);
-    if (data.grupos && data.grupos.length > 0) setGrupo(data.grupos[0].nombre);
+    if (data.grupos && data.grupos.length > 0) {
+      setGrupo((g) => g || data.grupos[0].nombre);
+      setCatGrupoSel((g) => g || data.grupos[0].nombre);
+    }
     setCargando(false);
   }
 
@@ -88,17 +100,9 @@ export default function Home() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        grupo,
-        empresa: empresaObj.nombre,
-        delegacion,
-        pdf,
-        numFactura,
-        provNo: empresaObj.numero,
-        provNombre: empresaObj.nombre,
-        alta,
-        importe: importeRaw,
-        capturista,
-        fechaRecepcion,
+        grupo, empresa: empresaObj.nombre, delegacion, pdf, numFactura,
+        provNo: empresaObj.numero, provNombre: empresaObj.nombre, alta,
+        importe: importeRaw, capturista, fechaRecepcion,
       }),
     });
     const data = await res.json();
@@ -106,16 +110,63 @@ export default function Home() {
     if (data.ok) {
       setMensaje('Factura guardada correctamente.');
       setMensajeTipo('ok');
-      setPdf('');
-      setNumFactura('');
-      setAlta('');
-      setImporteTexto('');
-      setImporteRaw(0);
+      setPdf(''); setNumFactura(''); setAlta(''); setImporteTexto(''); setImporteRaw(0);
     } else {
       setMensaje(data.error || 'Error al guardar.');
       setMensajeTipo('error');
     }
   }
+
+  // ---- Catalogos: acciones ----
+  async function agregarEmpresa() {
+    const grupoFinal = catGrupoNuevo.trim() || catGrupoSel;
+    if (!grupoFinal || !catEmpresaNombre.trim() || !catEmpresaNumero.trim()) return;
+    await fetch('/api/catalogos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'empresa', grupo: grupoFinal, nombre: catEmpresaNombre.trim(), numero: catEmpresaNumero.trim() }),
+    });
+    setCatGrupoNuevo(''); setCatEmpresaNombre(''); setCatEmpresaNumero('');
+    await cargarCatalogos();
+  }
+  async function eliminarEmpresa(numero) {
+    await fetch('/api/catalogos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'empresa', numero }),
+    });
+    await cargarCatalogos();
+  }
+  async function agregarDelegacion() {
+    if (!catCodigo.trim() || !catDelegNombre.trim()) return;
+    await fetch('/api/catalogos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'delegacion', codigo: catCodigo.trim(), nombre: catDelegNombre.trim() }),
+    });
+    setCatCodigo(''); setCatDelegNombre('');
+    await cargarCatalogos();
+  }
+  async function eliminarDelegacion(nombre) {
+    await fetch('/api/catalogos', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'delegacion', nombre }),
+    });
+    await cargarCatalogos();
+  }
+
+  // ---- Panel KPI: cálculos ----
+  const total = facturas.length;
+  const conCR = facturas.filter((f) => f.tiene_cr);
+  const sinCR = facturas.filter((f) => !f.tiene_cr);
+  const pct = total ? Math.round((conCR.length / total) * 100) : 0;
+  const porGrupo = {};
+  facturas.forEach((f) => { porGrupo[f.grupo] = (porGrupo[f.grupo] || 0) + 1; });
+  const maxGrupo = Math.max(1, ...Object.values(porGrupo));
+
+  const grupoCatObj = catalogos.grupos.find((g) => g.nombre === catGrupoSel);
+  const empresasCat = grupoCatObj ? grupoCatObj.empresas : [];
 
   if (cargando) return <div className="app"><p>Cargando…</p></div>;
 
@@ -134,6 +185,8 @@ export default function Home() {
       <nav className="tabs">
         <button className={tab === 'captura' ? 'active' : ''} onClick={() => setTab('captura')}>Captura</button>
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
+        <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
+        <button className={tab === 'catalogos' ? 'active' : ''} onClick={() => setTab('catalogos')}>Catálogos</button>
       </nav>
 
       {tab === 'captura' && (
@@ -214,9 +267,7 @@ export default function Home() {
           <h2>Registros capturados</h2>
           <table>
             <thead>
-              <tr>
-                <th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th>
-              </tr>
+              <tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th></tr>
             </thead>
             <tbody>
               {facturas.map((f) => (
@@ -226,12 +277,82 @@ export default function Home() {
                   <td>{f.empresa}</td>
                   <td>{f.delegacion}</td>
                   <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                  <td>{f.tiene_cr ? 'Con CR' : 'Sin CR'}</td>
+                  <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="muted">{facturas.length} registros.</p>
+        </div>
+      )}
+
+      {tab === 'panel' && (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi"><div className="num">{total}</div><div className="lbl">Facturas totales</div></div>
+            <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>{conCR.length}</div><div className="lbl">Con contra recibo</div></div>
+            <div className="kpi"><div className="num" style={{ color: 'var(--amber)' }}>{sinCR.length}</div><div className="lbl">Sin contra recibo</div></div>
+            <div className="kpi"><div className="num">{pct}%</div><div className="lbl">Tasa de recuperación</div></div>
+          </div>
+          <div className="card">
+            <h2>Distribución por grupo</h2>
+            {Object.keys(porGrupo).length === 0 && <p className="muted">Sin datos aún.</p>}
+            {Object.entries(porGrupo).map(([g, val]) => (
+              <div className="bar-row" key={g}>
+                <div className="bar-label">{g}</div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: (val / maxGrupo) * 100 + '%' }} /></div>
+                <div className="bar-val">{val}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {tab === 'catalogos' && (
+        <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <div className="card">
+            <h2>Empresas por grupo</h2>
+            <div className="field">
+              <label>Grupo activo</label>
+              <select value={catGrupoSel} onChange={(e) => setCatGrupoSel(e.target.value)}>
+                {catalogos.grupos.map((g) => <option key={g.nombre} value={g.nombre}>{g.nombre}</option>)}
+              </select>
+            </div>
+            <div className="row-inline">
+              <input placeholder="Grupo (nuevo o existente)" value={catGrupoNuevo} onChange={(e) => setCatGrupoNuevo(e.target.value)} />
+            </div>
+            <div className="row-inline">
+              <input placeholder="Nombre de empresa" value={catEmpresaNombre} onChange={(e) => setCatEmpresaNombre(e.target.value)} />
+              <input placeholder="No. proveedor" value={catEmpresaNumero} onChange={(e) => setCatEmpresaNumero(e.target.value)} style={{ maxWidth: 140 }} />
+              <button className="btn btn-primary btn-sm" onClick={agregarEmpresa}>Agregar</button>
+            </div>
+            <div className="catalog-list">
+              {empresasCat.length === 0 && <p className="muted">Sin empresas en este grupo.</p>}
+              {empresasCat.map((e) => (
+                <div className="catalog-item" key={e.numero}>
+                  <span>{e.nombre} <span className="muted">· No. {e.numero}</span></span>
+                  <button className="btn btn-danger btn-sm" onClick={() => eliminarEmpresa(e.numero)}>Eliminar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <h2>Delegaciones / OOAD-UMAE</h2>
+            <div className="row-inline">
+              <input placeholder="Código (ej. 29)" value={catCodigo} onChange={(e) => setCatCodigo(e.target.value)} style={{ maxWidth: 120 }} />
+              <input placeholder="Ej. OOAD 29 - Tamaulipas" value={catDelegNombre} onChange={(e) => setCatDelegNombre(e.target.value)} />
+              <button className="btn btn-primary btn-sm" onClick={agregarDelegacion}>Agregar</button>
+            </div>
+            <div className="catalog-list">
+              {catalogos.delegaciones.map((d) => (
+                <div className="catalog-item" key={d.nombre}>
+                  <span><b>{d.codigo}</b> · {d.nombre}</span>
+                  <button className="btn btn-danger btn-sm" onClick={() => eliminarDelegacion(d.nombre)}>Eliminar</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
