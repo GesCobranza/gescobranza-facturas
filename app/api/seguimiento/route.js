@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
+async function agregarConteoComentarios(supabase, filas) {
+  const ids = filas.filter((f) => f.enviada_gestor).map((f) => f.id);
+  if (ids.length === 0) return filas;
+  const { data: comentarios } = await supabase
+    .from('comentarios_facturas')
+    .select('factura_id')
+    .in('factura_id', ids);
+  const conteo = {};
+  (comentarios || []).forEach((c) => { conteo[c.factura_id] = (conteo[c.factura_id] || 0) + 1; });
+  return filas.map((f) => ({ ...f, comentarios_count: conteo[f.id] || 0 }));
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const delegacion = searchParams.get('delegacion') || null;
@@ -13,7 +25,7 @@ export async function GET(request) {
   const { data: dash, error: errDash } = await supabase.rpc('seguimiento_dashboard');
   if (errDash) return NextResponse.json({ ok: false, error: errDash.message }, { status: 500 });
 
-  const { data: esperando, error: errEsp } = await supabase
+  const { data: esperandoRaw, error: errEsp } = await supabase
     .from('facturas')
     .select('*')
     .eq('tiene_cr', false)
@@ -21,6 +33,7 @@ export async function GET(request) {
     .order('fecha_envio', { ascending: true })
     .limit(500);
   if (errEsp) return NextResponse.json({ ok: false, error: errEsp.message }, { status: 500 });
+  const esperando = await agregarConteoComentarios(supabase, esperandoRaw);
 
   let query = supabase.from('facturas').select('*', { count: 'exact' }).eq('tiene_cr', false).order('fecha_captura', { ascending: false });
   if (delegacion) query = query.eq('delegacion', delegacion);
@@ -28,8 +41,9 @@ export async function GET(request) {
   if (envio === 'noenviada') query = query.eq('enviada_gestor', false);
   const desde = (pagina - 1) * porPagina;
   query = query.range(desde, desde + porPagina - 1);
-  const { data: filasGestores, error: errFilas, count } = await query;
+  const { data: filasGestoresRaw, error: errFilas, count } = await query;
   if (errFilas) return NextResponse.json({ ok: false, error: errFilas.message }, { status: 500 });
+  const filasGestores = await agregarConteoComentarios(supabase, filasGestoresRaw);
 
   return NextResponse.json({
     ok: true,
