@@ -142,7 +142,7 @@ td{padding:9px 10px; border-bottom:1px solid var(--line);}
   background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
   margin-bottom:24px; overflow:hidden;
 }
-.portal-hero-strip{background:var(--navy); height:8px;}
+.portal-hero-strip{background:var(--navy); height:14px;}
 .portal-hero-body{padding:28px 32px 32px;}
 .portal-hero .brandline{display:flex; align-items:center; gap:10px; margin-bottom:20px;}
 .portal-hero .brandline .mark{width:32px; height:32px; font-size:14px; border-width:2px;}
