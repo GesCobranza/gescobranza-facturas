@@ -13,6 +13,7 @@ export default function Home() {
   const [cFiltroDeleg, setCFiltroDeleg] = useState('');
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
+  const [cFiltroObservacion, setCFiltroObservacion] = useState(false);
   const [cPagina, setCPagina] = useState(1);
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
   const [consultaCargando, setConsultaCargando] = useState(false);
@@ -91,7 +92,7 @@ export default function Home() {
 
   useEffect(() => {
     if (tab === 'consulta') cargarConsulta();
-  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cPagina]);
+  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cPagina]);
 
   useEffect(() => {
     if (tab === 'panel') cargarKpi();
@@ -120,6 +121,7 @@ export default function Home() {
     if (cFiltroDeleg) params.set('delegacion', cFiltroDeleg);
     if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
     if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
+    if (cFiltroObservacion) params.set('conObservacion', '1');
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     setConsultaData({ facturas: data.facturas || [], total: data.total || 0 });
@@ -384,6 +386,7 @@ export default function Home() {
     if (cFiltroDeleg) params.set('delegacion', cFiltroDeleg);
     if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
     if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
+    if (cFiltroObservacion) params.set('conObservacion', '1');
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     const filas = (data.facturas || []).map((f) => ({
@@ -738,6 +741,12 @@ async function cruzarCon5005() {
               <option value="con_cr">Con CR</option>
               <option value="sin_cr">Sin CR</option>
             </select>
+            <button
+              className={cFiltroObservacion ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+              onClick={() => { setCFiltroObservacion((v) => !v); setCPagina(1); }}
+            >
+              ⚠ Solo con observaciones
+            </button>
           </div>
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
