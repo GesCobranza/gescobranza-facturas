@@ -124,11 +124,7 @@ export default function PortalGrupo() {
           <div className="portal-hero-strip"></div>
           <div className="portal-hero-body">
             <div className="brandline">
-              <div className="mark">G</div>
-              <div>
-                <div className="wordmark-title">GESTIÓN ESPECIALIZADA</div>
-                <div className="wordmark-sub">EN COBRANZA</div>
-              </div>
+              <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 30 }} />
             </div>
             <div className="eyebrow">Portal de cliente</div>
             <h1>{grupo}</h1>
@@ -165,11 +161,7 @@ export default function PortalGrupo() {
         <div className="portal-hero-strip"></div>
         <div className="portal-hero-body">
           <div className="brandline">
-            <div className="mark">G</div>
-            <div>
-              <div className="wordmark-title">GESTIÓN ESPECIALIZADA</div>
-              <div className="wordmark-sub">EN COBRANZA</div>
-            </div>
+            <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 30 }} />
           </div>
           <div className="eyebrow">Portal de cliente</div>
           <h1>Bienvenido, {grupo}</h1>
