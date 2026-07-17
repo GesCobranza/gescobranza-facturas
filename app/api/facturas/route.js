@@ -1,27 +1,54 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
+export const maxDuration = 60;
+
+// Quita ceros a la izquierda para que "0000146440" y "146440" se reconozcan como el mismo proveedor
+function normalizarProvNo(valor) {
+  const limpio = String(valor || '').trim().replace(/^0+/, '');
+  return limpio || '0';
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const grupo = searchParams.get('grupo') || null;
   const delegacion = searchParams.get('delegacion') || null;
   const provNo = searchParams.get('provNo') || null;
   const estatus = searchParams.get('estatus') || null; // 'con_cr' | 'sin_cr' | null (todos)
-  const pagina = Math.max(1, parseInt(searchParams.get('pagina') || '1', 10));
-  const porPagina = Math.min(200, Math.max(10, parseInt(searchParams.get('porPagina') || '50', 10)));
+  const exportar = searchParams.get('exportar') === '1';
 
   const supabase = getSupabaseAdmin();
-  let query = supabase.from('facturas').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
-  if (grupo) query = query.eq('grupo', grupo);
-  if (delegacion) query = query.eq('delegacion', delegacion);
-  if (provNo) query = query.eq('prov_no', provNo);
-  if (estatus === 'con_cr') query = query.eq('tiene_cr', true);
-  if (estatus === 'sin_cr') query = query.eq('tiene_cr', false);
 
+  function construirQuery() {
+    let q = supabase.from('facturas').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
+    if (grupo) q = q.eq('grupo', grupo);
+    if (delegacion) q = q.eq('delegacion', delegacion);
+    if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
+    if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
+    if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
+    return q;
+  }
+
+  if (exportar) {
+    // Trae TODAS las filas que coincidan con los filtros, sin límite de página (para exportar a Excel)
+    const PAGINA = 1000;
+    let desde = 0;
+    let todas = [];
+    while (true) {
+      const { data, error } = await construirQuery().range(desde, desde + PAGINA - 1);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      todas = todas.concat(data);
+      if (data.length < PAGINA) break;
+      desde += PAGINA;
+    }
+    return NextResponse.json({ facturas: todas, total: todas.length });
+  }
+
+  const pagina = Math.max(1, parseInt(searchParams.get('pagina') || '1', 10));
+  const porPagina = Math.min(200, Math.max(10, parseInt(searchParams.get('porPagina') || '50', 10)));
   const desde = (pagina - 1) * porPagina;
-  query = query.range(desde, desde + porPagina - 1);
 
-  const { data, error, count } = await query;
+  const { data, error, count } = await construirQuery().range(desde, desde + porPagina - 1);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ facturas: data, total: count, pagina, porPagina });
 }
@@ -39,7 +66,6 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'Completa PDF, empresa, alta e importe (mayor a $0.00).' });
   }
 
-  // Duplicado
   const { data: existentes, error: errDup } = await supabase
     .from('facturas')
     .select('id')
@@ -49,7 +75,6 @@ export async function POST(request) {
     return NextResponse.json({ ok: false, error: 'Ese número de alta ya fue capturado antes — revisa si es duplicado.' });
   }
 
-  // Validación de prefijo contra la delegación elegida
   const { data: deleg, error: errDeleg } = await supabase
     .from('catalogo_delegaciones')
     .select('*')
@@ -73,7 +98,7 @@ export async function POST(request) {
     delegacion: body.delegacion,
     pdf,
     num_factura: body.numFactura || pdf,
-    prov_no: provNo,
+    prov_no: normalizarProvNo(provNo),
     prov_nombre: body.provNombre,
     alta,
     importe,
@@ -85,4 +110,81 @@ export async function POST(request) {
   if (errInsert) return NextResponse.json({ ok: false, error: errInsert.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request) {
+  const body = await request.json();
+  const supabase = getSupabaseAdmin();
+
+  if (body.accion === 'marcarEnviadas') {
+    const ids = Array.isArray(body.ids) ? body.ids : [];
+    if (ids.length === 0) return NextResponse.json({ ok: false, error: 'No se recibieron facturas para marcar.' });
+    const { error } = await supabase
+      .from('facturas')
+      .update({ enviada_gestor: true, fecha_envio: new Date().toISOString() })
+      .in('id', ids);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.accion === 'quitarEnviada') {
+    if (!body.id) return NextResponse.json({ ok: false, error: 'Falta el id de la factura.' });
+    const { error } = await supabase
+      .from('facturas')
+      .update({ enviada_gestor: false, fecha_envio: null })
+      .eq('id', body.id);
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.accion === 'editar') {
+    const id = body.id;
+    const nuevaAlta = String(body.alta || '').trim();
+    const nuevoImporte = Number(body.importe);
+    if (!id || !nuevaAlta || !nuevoImporte || nuevoImporte <= 0) {
+      return NextResponse.json({ ok: false, error: 'Alta e importe (mayor a $0.00) son obligatorios.' });
+    }
+
+    const { data: actual, error: errActual } = await supabase.from('facturas').select('*').eq('id', id).maybeSingle();
+    if (errActual) return NextResponse.json({ ok: false, error: errActual.message }, { status: 500 });
+    if (!actual) return NextResponse.json({ ok: false, error: 'Esa factura ya no existe.' });
+
+    if (nuevaAlta.toLowerCase() !== String(actual.alta).toLowerCase()) {
+      const { data: dup, error: errDup } = await supabase
+        .from('facturas')
+        .select('id')
+        .ilike('alta', nuevaAlta)
+        .neq('id', id);
+      if (errDup) return NextResponse.json({ ok: false, error: errDup.message }, { status: 500 });
+      if (dup && dup.length > 0) {
+        return NextResponse.json({ ok: false, error: 'Ya existe otra factura con ese número de alta.' });
+      }
+    }
+
+    const { data: deleg, error: errDeleg } = await supabase
+      .from('catalogo_delegaciones')
+      .select('*')
+      .eq('nombre', actual.delegacion)
+      .maybeSingle();
+    if (errDeleg) return NextResponse.json({ ok: false, error: errDeleg.message }, { status: 500 });
+    if (deleg) {
+      const codigos = deleg.codigo.split(',');
+      const cumple = codigos.some((c) => nuevaAlta.startsWith(c));
+      if (!cumple) {
+        return NextResponse.json({
+          ok: false,
+          error: `El número de alta debe iniciar con ${codigos.join(' o ')} para coincidir con "${deleg.nombre}" (delegación ya asignada a esta factura). No se guardó.`,
+        });
+      }
+    }
+
+    const { error: errUpdate } = await supabase
+      .from('facturas')
+      .update({ alta: nuevaAlta, importe: nuevoImporte })
+      .eq('id', id);
+    if (errUpdate) return NextResponse.json({ ok: false, error: errUpdate.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  return NextResponse.json({ ok: false, error: 'Acción no reconocida.' });
 }
