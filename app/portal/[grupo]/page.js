@@ -20,6 +20,7 @@ export default function PortalGrupo() {
   const [cFiltroDeleg, setCFiltroDeleg] = useState('');
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
+  const [cOrden, setCOrden] = useState('reciente');
   const [cPagina, setCPagina] = useState(1);
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
   const [consultaCargando, setConsultaCargando] = useState(false);
@@ -34,7 +35,7 @@ export default function PortalGrupo() {
 
   useEffect(() => {
     if (autenticado && tab === 'consulta') cargarConsulta();
-  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cPagina]);
+  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cOrden, cPagina]);
 
   useEffect(() => {
     if (autenticado && tab === 'panel') cargarKpi();
@@ -71,7 +72,7 @@ export default function PortalGrupo() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grupo, clave,
-        delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null,
+        delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
         pagina: cPagina, porPagina: CONSULTA_POR_PAGINA,
       }),
     });
@@ -99,7 +100,7 @@ export default function PortalGrupo() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grupo, clave, exportar: true,
-        delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null,
+        delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
       }),
     });
     const data = await res.json();
@@ -195,6 +196,11 @@ export default function PortalGrupo() {
               <option value="">Todos los estatus</option>
               <option value="con_cr">Con CR</option>
               <option value="sin_cr">Sin CR</option>
+            </select>
+            <select value={cOrden} onChange={(e) => { setCOrden(e.target.value); setCPagina(1); }}>
+              <option value="reciente">Más reciente primero</option>
+              <option value="importe_desc">Importe: mayor a menor</option>
+              <option value="importe_asc">Importe: menor a mayor</option>
             </select>
           </div>
           {consultaCargando ? <p className="muted">Cargando…</p> : (
