@@ -107,6 +107,7 @@ export default function ImportarHistorico() {
       'Fila (Excel)': o.fila,
       'Alta': o.alta,
       'Motivo': o.motivo,
+      'Categoría': o.categoria === 'revisar' ? 'Requiere revisión' : 'Informativo (normal)',
     }));
     const ws = XLSX.utils.json_to_sheet(datos);
     const wb = XLSX.utils.book_new();
@@ -170,25 +171,33 @@ export default function ImportarHistorico() {
           <div className="card-header-row">
             <h2>Resultado de la importación</h2>
             {resultado.omitidas > 0 && (
-              <button className="btn btn-ghost btn-sm" onClick={descargarOmitidas}>Descargar Excel de omitidas</button>
+              <button className="btn btn-ghost btn-sm" onClick={descargarOmitidas}>Descargar Excel completo</button>
             )}
           </div>
           <div className="alert ok">✓ {resultado.insertadas} facturas importadas correctamente.</div>
-          {resultado.omitidas > 0 && (
+          {resultado.omitidasInformativo > 0 && (
+            <p className="muted">
+              {resultado.omitidasInformativo} filas se saltaron solas sin necesitar nada de ti (ya existían en el sistema o
+              estaban repetidas dentro del mismo archivo — normal, no requieren revisión).
+            </p>
+          )}
+          {resultado.omitidasRevisar > 0 ? (
             <>
-              <div className="alert error">{resultado.omitidas} filas omitidas en total — descarga el Excel de arriba para verlas todas.</div>
+              <div className="alert error">{resultado.omitidasRevisar} filas sí necesitan tu revisión:</div>
               <table>
                 <thead><tr><th>Fila (Excel)</th><th>Alta</th><th>Motivo</th></tr></thead>
                 <tbody>
-                  {resultado.detalleOmitidas.slice(0, 50).map((o, i) => (
+                  {resultado.detalleOmitidas.filter((o) => o.categoria === 'revisar').slice(0, 50).map((o, i) => (
                     <tr key={i}><td>{o.fila}</td><td>{o.alta}</td><td>{o.motivo}</td></tr>
                   ))}
                 </tbody>
               </table>
-              {resultado.detalleOmitidas.length > 50 && (
-                <p className="muted">Mostrando las primeras 50 en pantalla — el Excel trae las {resultado.detalleOmitidas.length} completas.</p>
+              {resultado.omitidasRevisar > 50 && (
+                <p className="muted">Mostrando las primeras 50 en pantalla — descarga el Excel completo para verlas todas.</p>
               )}
             </>
+          ) : (
+            resultado.omitidas > 0 && <div className="alert ok">✓ Ninguna fila requiere revisión — todo lo demás se saltó por ser normal (duplicados).</div>
           )}
         </div>
       )}
