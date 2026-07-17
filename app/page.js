@@ -41,6 +41,14 @@ export default function Home() {
   const [importeTexto, setImporteTexto] = useState('');
   const [importeRaw, setImporteRaw] = useState(0);
   const [capturista, setCapturista] = useState('Sophie');
+
+  // ---- Captura: por lotes (mismo susceptible/PDF, varias facturas) ----
+  const [loteActivo, setLoteActivo] = useState(false);
+  const [loteCantidadTexto, setLoteCantidadTexto] = useState('');
+  const [loteFilas, setLoteFilas] = useState([]);
+  const [loteGuardando, setLoteGuardando] = useState(false);
+  const [loteMensaje, setLoteMensaje] = useState('');
+  const [loteMensajeTipo, setLoteMensajeTipo] = useState('');
   const [fechaRecepcion, setFechaRecepcion] = useState(() => new Date().toISOString().slice(0, 10));
   const [mensaje, setMensaje] = useState('');
   const [mensajeTipo, setMensajeTipo] = useState('');
@@ -197,6 +205,79 @@ export default function Home() {
     } else {
       setMensaje(data.error || 'Error al guardar.');
       setMensajeTipo('error');
+    }
+  }
+
+  // ---- Captura por lotes: acciones ----
+  function generarFilasLote() {
+    const n = Math.max(2, Math.min(30, parseInt(loteCantidadTexto, 10) || 0));
+    if (!n) {
+      setLoteMensaje('Escribe cuántas facturas incluye este susceptible (mínimo 2).');
+      setLoteMensajeTipo('error');
+      return;
+    }
+    setLoteFilas(Array.from({ length: n }, () => ({ alta: '', importeTexto: '', importeRaw: 0, numFactura: '' })));
+    setLoteMensaje('');
+  }
+
+  function actualizarFilaLote(idx, campo, valor) {
+    setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, [campo]: valor } : f)));
+  }
+
+  function formatearImporteLote(idx, valorInput) {
+    let digitos = valorInput.replace(/\D/g, '');
+    digitos = digitos.replace(/^0+/, '') || '0';
+    if (digitos.length > 11) digitos = digitos.slice(0, 11);
+    const valor = parseInt(digitos, 10) / 100;
+    setLoteFilas((prev) => prev.map((f, i) => (i === idx
+      ? { ...f, importeRaw: valor, importeTexto: valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) }
+      : f)));
+  }
+
+  function validarAltaLote(altaValor) {
+    if (!deleg || !altaValor) return { ok: false, hint: deleg ? `Debe iniciar con ${deleg.codigo.split(',').join(' o ')}` : '' };
+    const codigos = deleg.codigo.split(',');
+    const ok = codigos.some((c) => altaValor.startsWith(c));
+    return { ok, hint: ok ? `✓ Coincide con ${codigos.join(' o ')}` : `✗ Debe iniciar con ${codigos.join(' o ')}` };
+  }
+
+  const loteTodoListo = loteFilas.length > 0
+    && grupo && empresaObj && delegacion && pdf
+    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && validarAltaLote(f.alta).ok);
+
+  const loteAltasDuplicadasEntreSi = (() => {
+    const vistos = new Set();
+    const dup = new Set();
+    loteFilas.forEach((f) => {
+      const a = f.alta.trim().toLowerCase();
+      if (!a) return;
+      if (vistos.has(a)) dup.add(a); else vistos.add(a);
+    });
+    return dup;
+  })();
+
+  async function guardarLote() {
+    setLoteGuardando(true);
+    setLoteMensaje('');
+    const res = await fetch('/api/facturas/lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grupo, empresa: empresaObj.nombre, delegacion, pdf,
+        provNo: empresaObj.numero, provNombre: empresaObj.nombre,
+        capturista, fechaRecepcion,
+        filas: loteFilas.map((f) => ({ alta: f.alta, importe: f.importeRaw, numFactura: f.numFactura })),
+      }),
+    });
+    const data = await res.json();
+    setLoteGuardando(false);
+    if (data.ok) {
+      setLoteMensaje(`✓ ${data.insertadas} facturas guardadas correctamente para este susceptible.`);
+      setLoteMensajeTipo('ok');
+      setPdf(''); setLoteFilas([]); setLoteCantidadTexto('');
+    } else {
+      setLoteMensaje(data.error || 'No se pudo guardar el lote.');
+      setLoteMensajeTipo('error');
     }
   }
 
@@ -507,43 +588,127 @@ async function cruzarCon5005() {
           </div>
           <div className="grid">
             <div className="field">
-              <label>No. de PDF</label>
+              <label>No. de PDF / Susceptible</label>
               <input value={pdf} onChange={(e) => setPdf(e.target.value)} placeholder="Ej. PDF-00231" />
             </div>
-            <div className="field">
-              <label>Número de factura</label>
-              <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)} placeholder="Si es distinto al PDF" />
-            </div>
+            {!loteActivo && (
+              <div className="field">
+                <label>Número de factura</label>
+                <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)} placeholder="Si es distinto al PDF" />
+              </div>
+            )}
             <div className="field">
               <label>Fecha de recepción</label>
               <input type="date" value={fechaRecepcion} onChange={(e) => setFechaRecepcion(e.target.value)} />
             </div>
           </div>
-          <div className="grid">
-            <div className="field">
-              <label>Proveedor</label>
-              <input readOnly value={empresaObj ? `${empresaObj.nombre} · No. ${empresaObj.numero}` : ''} />
-            </div>
-            <div className="field">
-              <label>Importe</label>
-              <input value={importeTexto} onChange={(e) => formatearImporte(e.target.value)} placeholder="$0.00" />
-            </div>
-            <div className="field">
-              <label>Número de alta ⚠ crítico</label>
-              <input value={alta} onChange={(e) => setAlta(e.target.value)} placeholder="Ej. AL-2026-00981" />
-              <span className="hint">{altaHint}</span>
-            </div>
+
+          <div className="field" style={{ marginBottom: 16 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={loteActivo}
+                onChange={(e) => { setLoteActivo(e.target.checked); setLoteFilas([]); setLoteCantidadTexto(''); setLoteMensaje(''); }}
+                style={{ width: 'auto' }}
+              />
+              Este susceptible incluye varias facturas (mismo grupo, proveedor y delegación)
+            </label>
           </div>
-          <div className="field" style={{ maxWidth: 220, marginBottom: 16 }}>
-            <label>Capturista</label>
-            <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
-              <option value="Sophie">Sophie</option>
-              <option value="Mariano">Mariano</option>
-            </select>
-          </div>
-          <button className="btn btn-primary" onClick={guardar} disabled={guardando}>
-            {guardando ? 'Guardando…' : 'Guardar factura'}
-          </button>
+
+          {!loteActivo ? (
+            <>
+              <div className="grid">
+                <div className="field">
+                  <label>Proveedor</label>
+                  <input readOnly value={empresaObj ? `${empresaObj.nombre} · No. ${empresaObj.numero}` : ''} />
+                </div>
+                <div className="field">
+                  <label>Importe</label>
+                  <input value={importeTexto} onChange={(e) => formatearImporte(e.target.value)} placeholder="$0.00" />
+                </div>
+                <div className="field">
+                  <label>Número de alta ⚠ crítico</label>
+                  <input value={alta} onChange={(e) => setAlta(e.target.value)} placeholder="Ej. AL-2026-00981" />
+                  <span className="hint">{altaHint}</span>
+                </div>
+              </div>
+              <div className="field" style={{ maxWidth: 220, marginBottom: 16 }}>
+                <label>Capturista</label>
+                <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
+                  <option value="Sophie">Sophie</option>
+                  <option value="Mariano">Mariano</option>
+                </select>
+              </div>
+              <button className="btn btn-primary" onClick={guardar} disabled={guardando}>
+                {guardando ? 'Guardando…' : 'Guardar factura'}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="muted" style={{ marginBottom: 12 }}>
+                Proveedor: <b>{empresaObj ? empresaObj.nombre : '— elige empresa arriba —'}</b> · Delegación: <b>{delegacion || '— elige delegación arriba —'}</b>
+                {deleg && <> · el alta debe iniciar con <b>{deleg.codigo.split(',').join(' o ')}</b></>}
+              </p>
+              {loteFilas.length === 0 ? (
+                <div className="row-inline">
+                  <input
+                    type="number" min="2" max="30"
+                    value={loteCantidadTexto}
+                    onChange={(e) => setLoteCantidadTexto(e.target.value)}
+                    placeholder="¿Cuántas facturas incluye? (ej. 12)"
+                    style={{ maxWidth: 260 }}
+                  />
+                  <button className="btn btn-primary btn-sm" onClick={generarFilasLote}>Generar filas</button>
+                </div>
+              ) : (
+                <>
+                  <table>
+                    <thead><tr><th style={{ width: 40 }}>#</th><th>Alta ⚠</th><th>Importe</th><th>No. de factura</th></tr></thead>
+                    <tbody>
+                      {loteFilas.map((f, idx) => {
+                        const val = validarAltaLote(f.alta);
+                        const dup = loteAltasDuplicadasEntreSi.has(f.alta.trim().toLowerCase());
+                        return (
+                          <tr key={idx}>
+                            <td className="muted">{idx + 1}</td>
+                            <td>
+                              <input value={f.alta} onChange={(e) => actualizarFilaLote(idx, 'alta', e.target.value)} placeholder="Ej. AL-2026-00981" style={{ minWidth: 160 }} />
+                              {f.alta && (
+                                <span className="hint" style={{ color: dup ? 'var(--red)' : (val.ok ? 'var(--green)' : 'var(--red)') }}>
+                                  {dup ? '✗ Alta repetida en este mismo lote' : val.hint}
+                                </span>
+                              )}
+                            </td>
+                            <td><input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} /></td>
+                            <td><input value={f.numFactura} onChange={(e) => actualizarFilaLote(idx, 'numFactura', e.target.value)} placeholder="Si es distinto al PDF" style={{ minWidth: 140 }} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div className="field" style={{ maxWidth: 220, margin: '16px 0' }}>
+                    <label>Capturista</label>
+                    <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
+                      <option value="Sophie">Sophie</option>
+                      <option value="Mariano">Mariano</option>
+                    </select>
+                  </div>
+                  <div className="toolbar">
+                    <button
+                      className="btn btn-primary"
+                      onClick={guardarLote}
+                      disabled={loteGuardando || !loteTodoListo || loteAltasDuplicadasEntreSi.size > 0}
+                    >
+                      {loteGuardando ? 'Guardando…' : `Guardar ${loteFilas.length} facturas`}
+                    </button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => { setLoteFilas([]); setLoteCantidadTexto(''); }}>Empezar de nuevo</button>
+                  </div>
+                  {!loteTodoListo && <p className="muted" style={{ marginTop: 8 }}>Completa grupo, empresa, delegación y todas las filas (alta válida + importe) para poder guardar.</p>}
+                </>
+              )}
+              {loteMensaje && <div className={`alert ${loteMensajeTipo}`} style={{ marginTop: 12 }}>{loteMensaje}</div>}
+            </>
+          )}
         </div>
       )}
 
