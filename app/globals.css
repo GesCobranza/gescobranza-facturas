@@ -94,11 +94,13 @@ td{padding:9px 10px; border-bottom:1px solid var(--line);}
 /* Anillo de porcentaje (Panel KPI) */
 .kpi-ring-row{display:grid; grid-template-columns:220px 1fr; gap:20px; margin-bottom:16px;}
 @media(max-width:720px){.kpi-ring-row{grid-template-columns:1fr;}}
-.kpi-ring-card{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;}
-.kpi-ring-card svg{width:140px; height:140px; transform:rotate(-90deg);}
-.kpi-ring-num{font-family:'Space Grotesk',sans-serif; font-size:28px; font-weight:700; color:var(--navy); margin-top:-92px;}
-.kpi-ring-lbl{font-size:11px; color:var(--text-soft); margin-top:2px;}
-.kpi-ring-total{font-size:11.5px; color:var(--text-soft); margin-top:34px;}
+.kpi-ring-card{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:28px 20px;}
+.kpi-ring-wrap{position:relative; width:150px; height:150px; margin:0 auto;}
+.kpi-ring-wrap svg{width:100%; height:100%; transform:rotate(-90deg);}
+.kpi-ring-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;}
+.kpi-ring-num{font-family:'Space Grotesk',sans-serif; font-size:28px; font-weight:700; color:var(--navy);}
+.kpi-ring-lbl{font-size:11px; color:var(--text-soft); margin-top:4px; line-height:1.3;}
+.kpi-ring-total{font-size:11.5px; color:var(--text-soft); margin-top:18px;}
 .kpi-stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
 .kpi-stat{border-radius:14px; padding:16px;}
 .kpi-stat .lbl{font-size:12px; margin-bottom:6px; font-weight:600;}
