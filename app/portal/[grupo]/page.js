@@ -14,7 +14,7 @@ export default function PortalGrupo() {
 
   const [delegaciones, setDelegaciones] = useState([]);
   const [empresas, setEmpresas] = useState([]);
-  const [tab, setTab] = useState('consulta');
+  const [tab, setTab] = useState('panel');
 
   // ---- Consulta ----
   const [cFiltroDeleg, setCFiltroDeleg] = useState('');
