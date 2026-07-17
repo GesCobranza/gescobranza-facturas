@@ -148,6 +148,7 @@ export default function PortalGrupo() {
             </button>
           </form>
         </div>
+        <p className="muted" style={{ textAlign: 'center', marginTop: 14 }}>✉ atencion@gescobranza.com &nbsp;·&nbsp; ☎ 56 4734 7117</p>
       </div>
     );
   }
@@ -240,19 +241,36 @@ export default function PortalGrupo() {
 
           {kpiCargando || !kpiData ? <p className="muted">Cargando…</p> : (
             <>
-              <div className="kpi-grid">
-                <div className="kpi"><div className="num">{kpiData.total}</div><div className="lbl">Facturas totales</div></div>
-                <div className="kpi">
-                  <div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div>
-                  <div className="lbl">Con contra recibo</div>
-                  <div className="muted" style={{ marginTop: 4 }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+              <div className="kpi-ring-row">
+                <div className="card-hero kpi-ring-card">
+                  <svg viewBox="0 0 160 160">
+                    <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green-soft)" strokeWidth="14" />
+                    <circle
+                      cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
+                      strokeDasharray="427"
+                      strokeDashoffset={427 - (427 * (kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0)) / 100}
+                    />
+                  </svg>
+                  <div className="kpi-ring-num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div>
+                  <div className="kpi-ring-lbl">tasa de<br />recuperación</div>
+                  <div className="kpi-ring-total">{kpiData.total} facturas totales</div>
                 </div>
-                <div className="kpi">
-                  <div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div>
-                  <div className="lbl">Sin contra recibo</div>
-                  <div className="muted" style={{ marginTop: 4 }}>${Number(kpiData.importe_total - kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                <div className="kpi-stat-grid">
+                  <div className="kpi-stat" style={{ background: 'var(--green-soft)' }}>
+                    <div className="lbl" style={{ color: 'var(--green)' }}>Con contra recibo</div>
+                    <div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div>
+                    <div className="sub" style={{ color: 'var(--green)' }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="kpi-stat" style={{ background: 'var(--amber-soft)' }}>
+                    <div className="lbl" style={{ color: 'var(--amber)' }}>Sin contra recibo</div>
+                    <div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div>
+                    <div className="sub" style={{ color: 'var(--amber)' }}>${Number(kpiData.importe_total - kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                  <div className="kpi-stat" style={{ background: 'var(--card)', border: '1px solid var(--line)', gridColumn: '1 / -1' }}>
+                    <div className="lbl" style={{ color: 'var(--text-soft)' }}>Importe total</div>
+                    <div className="num" style={{ color: 'var(--navy)' }}>${Number(kpiData.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                  </div>
                 </div>
-                <div className="kpi"><div className="num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div><div className="lbl">Tasa de recuperación</div></div>
               </div>
 
               <div className="card">
@@ -273,11 +291,11 @@ export default function PortalGrupo() {
               <div className="card">
                 <h2>Top proveedores por volumen</h2>
                 <table>
-                  <thead><tr><th>Proveedor</th><th>Total</th><th>Con CR</th><th>% avance</th><th>Importe total</th></tr></thead>
+                  <thead><tr><th>Proveedor</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th><th>Importe total</th></tr></thead>
                   <tbody>
                     {kpiData.top_proveedores.map((p) => (
                       <tr key={p.prov_no}>
-                        <td>{p.prov_nombre}</td><td>{p.total}</td><td>{p.con_cr}</td>
+                        <td>{p.prov_nombre}</td><td>{p.total}</td><td>{p.con_cr}</td><td>{p.total - p.con_cr}</td>
                         <td>{p.total ? Math.round((p.con_cr / p.total) * 100) : 0}%</td>
                         <td>${Number(p.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                       </tr>
@@ -289,6 +307,16 @@ export default function PortalGrupo() {
           )}
         </>
       )}
+
+      <div className="app-footer">
+        <div className="contact-col">
+          <div className="eyebrow">Contacto</div>
+          <div className="contact-row">✉ admin@gescobranza.com</div>
+          <div className="contact-row">✉ atencion@gescobranza.com</div>
+          <div className="contact-row">☎ 56 4734 7117</div>
+        </div>
+        <div className="copy">Gestión Especializada en Cobranza</div>
+      </div>
     </div>
   );
 }
