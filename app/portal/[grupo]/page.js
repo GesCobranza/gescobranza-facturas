@@ -119,16 +119,16 @@ export default function PortalGrupo() {
 
   if (!autenticado) {
     return (
-      <div className="app" style={{ maxWidth: 420, paddingTop: 80 }}>
-        <header className="top">
-          <div className="brand">
-            <div className="mark">CR</div>
-            <div>
-              <h1>Ges Cobranza</h1>
-              <p>Portal de consulta — {grupo}</p>
-            </div>
+      <div className="app" style={{ maxWidth: 460, paddingTop: 60 }}>
+        <div className="portal-hero">
+          <div className="brandline">
+            <div className="mark">G</div>
+            <span>Ges Cobranza</span>
           </div>
-        </header>
+          <div className="eyebrow">Portal de cliente</div>
+          <h1>{grupo}</h1>
+          <p className="sub">Consulta el avance de tu cobranza y el estatus de tus facturas en un solo lugar.</p>
+        </div>
         <div className="card">
           <h2>Acceso al portal</h2>
           {error && <div className="alert error">{error}</div>}
@@ -154,15 +154,15 @@ export default function PortalGrupo() {
 
   return (
     <div className="app">
-      <header className="top">
-        <div className="brand">
-          <div className="mark">CR</div>
-          <div>
-            <h1>Ges Cobranza</h1>
-            <p>Portal de consulta — {grupo}</p>
-          </div>
+      <div className="portal-hero">
+        <div className="brandline">
+          <div className="mark">G</div>
+          <span>Ges Cobranza</span>
         </div>
-      </header>
+        <div className="eyebrow">Portal de cliente</div>
+        <h1>Bienvenido, {grupo}</h1>
+        <p className="sub">Aquí tienes el estatus completo de tus facturas y el avance de tu cobranza, actualizado en tiempo real.</p>
+      </div>
 
       <nav className="tabs">
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
