@@ -58,6 +58,21 @@ export default function Home() {
   const [gFiltroDeleg, setGFiltroDeleg] = useState('');
   const [gFiltroEnvio, setGFiltroEnvio] = useState('');
 
+  // ---- Consulta: edición inline ----
+  const [editandoId, setEditandoId] = useState(null);
+  const [editAlta, setEditAlta] = useState('');
+  const [editImporte, setEditImporte] = useState('');
+  const [editMensaje, setEditMensaje] = useState('');
+  const [editGuardando, setEditGuardando] = useState(false);
+  const [exportando, setExportando] = useState(false);
+
+  // ---- Comentarios (Seguimiento Envío) ----
+  const [comentarioFacturaId, setComentarioFacturaId] = useState(null);
+  const [comentarios, setComentarios] = useState([]);
+  const [comentarioTexto, setComentarioTexto] = useState('');
+  const [comentarioCargando, setComentarioCargando] = useState(false);
+  const [comentarioGuardando, setComentarioGuardando] = useState(false);
+
   // ---- Cruce 5005 ----
   const [raw5005File, setRaw5005File] = useState(null);
   const [raw5005Mensaje, setRaw5005Mensaje] = useState('');
@@ -248,6 +263,86 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accion: 'quitarEnviada', id }),
     });
+    await cargarSeguimiento();
+  }
+
+  // ---- Consulta: editar (solo alta e importe) ----
+  function empezarEdicion(f) {
+    setEditandoId(f.id);
+    setEditAlta(f.alta);
+    setEditImporte(String(f.importe));
+    setEditMensaje('');
+  }
+  function cancelarEdicion() {
+    setEditandoId(null);
+    setEditMensaje('');
+  }
+  async function guardarEdicion(id) {
+    setEditGuardando(true);
+    setEditMensaje('');
+    const res = await fetch('/api/facturas', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'editar', id, alta: editAlta, importe: parseFloat(editImporte) }),
+    });
+    const data = await res.json();
+    setEditGuardando(false);
+    if (data.ok) {
+      setEditandoId(null);
+      await cargarConsulta();
+    } else {
+      setEditMensaje(data.error || 'No se pudo guardar.');
+    }
+  }
+
+  // ---- Consulta: exportar a Excel ----
+  async function exportarConsultaExcel() {
+    setExportando(true);
+    const params = new URLSearchParams({ exportar: '1' });
+    if (cFiltroGrupo) params.set('grupo', cFiltroGrupo);
+    if (cFiltroDeleg) params.set('delegacion', cFiltroDeleg);
+    if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
+    if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
+    const res = await fetch('/api/facturas?' + params.toString());
+    const data = await res.json();
+    const filas = (data.facturas || []).map((f) => ({
+      Alta: f.alta, Grupo: f.grupo, Empresa: f.empresa, Delegación: f.delegacion,
+      Importe: Number(f.importe), CR: f.tiene_cr ? 'Con CR' : 'Sin CR',
+      Comprobante: f.comprobante || '', 'PDF/Susceptible': f.pdf || '', 'No. Factura': f.num_factura || '',
+      Capturista: f.capturista || '', 'Fecha Captura': f.fecha_captura || '',
+    }));
+    const ws = XLSX.utils.json_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Consulta');
+    XLSX.writeFile(wb, 'consulta-facturas.xlsx');
+    setExportando(false);
+  }
+
+  // ---- Comentarios ----
+  async function abrirComentarios(facturaId) {
+    setComentarioFacturaId(facturaId);
+    setComentarioTexto('');
+    setComentarioCargando(true);
+    const res = await fetch('/api/comentarios?facturaId=' + facturaId);
+    const data = await res.json();
+    setComentarios(data.ok ? data.comentarios : []);
+    setComentarioCargando(false);
+  }
+  function cerrarComentarios() {
+    setComentarioFacturaId(null);
+    setComentarios([]);
+  }
+  async function guardarComentario() {
+    if (!comentarioTexto.trim()) return;
+    setComentarioGuardando(true);
+    await fetch('/api/comentarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facturaId: comentarioFacturaId, comentario: comentarioTexto.trim() }),
+    });
+    setComentarioTexto('');
+    setComentarioGuardando(false);
+    await abrirComentarios(comentarioFacturaId);
     await cargarSeguimiento();
   }
 
@@ -452,7 +547,12 @@ async function cruzarCon5005() {
 
       {tab === 'consulta' && (
         <div className="card">
-          <h2>Registros capturados</h2>
+          <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+            <h2 style={{ margin: 0 }}>Registros capturados</h2>
+            <button className="btn btn-ghost btn-sm" onClick={exportarConsultaExcel} disabled={exportando}>
+              {exportando ? 'Generando…' : 'Descargar Excel'}
+            </button>
+          </div>
           <div className="toolbar">
             <select value={cFiltroGrupo} onChange={(e) => { setCFiltroGrupo(e.target.value); setCFiltroProvNo(''); setCPagina(1); }}>
               <option value="">Todos los grupos</option>
@@ -475,17 +575,35 @@ async function cruzarCon5005() {
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
               <table>
-                <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th></tr></thead>
+                <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
                 <tbody>
                   {consultaData.facturas.map((f) => (
                     <tr key={f.id}>
-                      <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
-                      <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                      <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
-                      <td>
-                        {f.comprobante || '—'}
-                        {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
-                      </td>
+                      {editandoId === f.id ? (
+                        <>
+                          <td><input value={editAlta} onChange={(e) => setEditAlta(e.target.value)} style={{ maxWidth: 140 }} /></td>
+                          <td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td><input value={editImporte} onChange={(e) => setEditImporte(e.target.value)} style={{ maxWidth: 100 }} /></td>
+                          <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                          <td>{f.comprobante || '—'}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-primary btn-sm" onClick={() => guardarEdicion(f.id)} disabled={editGuardando}>Guardar</button>{' '}
+                            <button className="btn btn-ghost btn-sm" onClick={cancelarEdicion}>Cancelar</button>
+                            {editMensaje && <div className="muted" style={{ color: 'var(--red)' }}>{editMensaje}</div>}
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                          <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                          <td>
+                            {f.comprobante || '—'}
+                            {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
+                          </td>
+                          <td><button className="btn btn-ghost btn-sm" onClick={() => empezarEdicion(f)}>Editar</button></td>
+                        </>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -596,13 +714,18 @@ async function cruzarCon5005() {
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && (
               <table>
-                <thead><tr><th>Alta</th><th>Delegación</th><th>Importe</th><th>Días esperando</th></tr></thead>
+                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
                 <tbody>
                   {esperando.map((f) => (
                     <tr key={f.id}>
-                      <td>{f.alta}</td><td>{f.delegacion}</td>
+                      <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                       <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                       <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
+                      <td>
+                        <button className="btn btn-ghost btn-sm" onClick={() => abrirComentarios(f.id)}>
+                          💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -633,12 +756,12 @@ async function cruzarCon5005() {
             {gCargando ? <p className="muted">Cargando…</p> : (
               <>
                 <table>
-                  <thead><tr><th></th><th>Alta</th><th>Delegación</th><th>Importe</th><th>Envío</th></tr></thead>
+                  <thead><tr><th></th><th>Alta</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Envío</th><th>Comentarios</th></tr></thead>
                   <tbody>
                     {filasGestores.map((f) => (
                       <tr key={f.id}>
                         <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
-                        <td>{f.alta}</td><td>{f.delegacion}</td>
+                        <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td>{f.enviada_gestor
                           ? <>
@@ -646,6 +769,13 @@ async function cruzarCon5005() {
                               <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
                             </>
                           : <span className="muted">Sin enviar</span>}
+                        </td>
+                        <td>
+                          {f.enviada_gestor && (
+                            <button className="btn btn-ghost btn-sm" onClick={() => abrirComentarios(f.id)}>
+                              💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -662,6 +792,38 @@ async function cruzarCon5005() {
               </>
             )}
           </div>
+
+          {comentarioFacturaId && (
+            <div className="card" style={{ border: '2px solid var(--blue)' }}>
+              <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+                <h2 style={{ margin: 0 }}>Comentarios de la factura</h2>
+                <button className="btn btn-ghost btn-sm" onClick={cerrarComentarios}>Cerrar</button>
+              </div>
+              <div className="row-inline">
+                <input
+                  placeholder="Ej. Gestor indica falta firma en el comprobante, se reenvía 10/07"
+                  value={comentarioTexto}
+                  onChange={(e) => setComentarioTexto(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') guardarComentario(); }}
+                />
+                <button className="btn btn-primary btn-sm" onClick={guardarComentario} disabled={comentarioGuardando}>
+                  {comentarioGuardando ? 'Guardando…' : 'Agregar comentario'}
+                </button>
+              </div>
+              {comentarioCargando ? <p className="muted">Cargando…</p> : (
+                comentarios.length === 0 ? <p className="muted">Sin comentarios todavía.</p> : (
+                  <div style={{ marginTop: 10 }}>
+                    {comentarios.map((c) => (
+                      <div key={c.id} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                        <div className="muted" style={{ fontSize: 12 }}>{new Date(c.fecha).toLocaleString('es-MX')}</div>
+                        <div>{c.comentario}</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </>
       )}
 
