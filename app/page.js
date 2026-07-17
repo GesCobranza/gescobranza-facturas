@@ -460,7 +460,7 @@ async function cruzarCon5005() {
     <div className="app">
       <header className="top">
         <div className="brand">
-          <div className="mark">CR</div>
+          <div className="mark">G</div>
           <div>
             <h1>Ges Cobranza</h1>
             <p>Control de captura de facturas</p>
@@ -798,7 +798,7 @@ async function cruzarCon5005() {
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td>{f.enviada_gestor
                           ? <>
-                              <span className="tag" style={{ background: 'var(--blue-soft)', color: 'var(--blue)' }}>Enviada</span>{' '}
+                              <span className="tag tag-enviada">Enviada</span>{' '}
                               <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
                             </>
                           : <span className="muted">Sin enviar</span>}
@@ -827,7 +827,7 @@ async function cruzarCon5005() {
           </div>
 
           {comentarioFacturaId && (
-            <div className="card" style={{ border: '2px solid var(--blue)' }}>
+            <div className="card" style={{ border: '2px solid var(--green)' }}>
               <div className="toolbar" style={{ justifyContent: 'space-between' }}>
                 <h2 style={{ margin: 0 }}>Comentarios de la factura</h2>
                 <button className="btn btn-ghost btn-sm" onClick={cerrarComentarios}>Cerrar</button>
