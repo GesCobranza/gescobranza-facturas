@@ -124,7 +124,7 @@ export default function PortalGrupo() {
           <div className="portal-hero-strip"></div>
           <div className="portal-hero-body">
             <div className="brandline">
-              <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 30 }} />
+              <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 46 }} />
             </div>
             <div className="eyebrow">Portal de cliente</div>
             <h1>{grupo}</h1>
@@ -161,7 +161,7 @@ export default function PortalGrupo() {
         <div className="portal-hero-strip"></div>
         <div className="portal-hero-body">
           <div className="brandline">
-            <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 30 }} />
+            <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 46 }} />
           </div>
           <div className="eyebrow">Portal de cliente</div>
           <h1>Bienvenido, {grupo}</h1>
