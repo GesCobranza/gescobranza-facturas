@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function Home() {
@@ -717,16 +717,49 @@ async function cruzarCon5005() {
                 <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
                 <tbody>
                   {esperando.map((f) => (
-                    <tr key={f.id}>
-                      <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
-                      <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                      <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
-                      <td>
-                        <button className="btn btn-ghost btn-sm" onClick={() => abrirComentarios(f.id)}>
-                          💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={f.id}>
+                      <tr>
+                        <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
+                        <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                        <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
+                        <td>
+                          <button className="btn btn-ghost btn-sm" onClick={() => comentarioFacturaId === f.id ? cerrarComentarios() : abrirComentarios(f.id)}>
+                            💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
+                          </button>
+                        </td>
+                      </tr>
+                      {comentarioFacturaId === f.id && (
+                        <tr>
+                          <td colSpan={6} style={{ background: 'var(--bg-soft, #f7f8fa)', padding: 16 }}>
+                            <div className="row-inline">
+                              <input
+                                placeholder="Ej. Gestor indica falta firma en el comprobante, se reenvía 10/07"
+                                value={comentarioTexto}
+                                onChange={(e) => setComentarioTexto(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') guardarComentario(); }}
+                                autoFocus
+                              />
+                              <button className="btn btn-primary btn-sm" onClick={guardarComentario} disabled={comentarioGuardando}>
+                                {comentarioGuardando ? 'Guardando…' : 'Agregar'}
+                              </button>
+                              <button className="btn btn-ghost btn-sm" onClick={cerrarComentarios}>Cerrar</button>
+                            </div>
+                            {comentarioCargando ? <p className="muted">Cargando…</p> : (
+                              comentarios.length === 0 ? <p className="muted">Sin comentarios todavía.</p> : (
+                                <div style={{ marginTop: 10 }}>
+                                  {comentarios.map((c) => (
+                                    <div key={c.id} style={{ padding: '8px 0', borderTop: '1px solid var(--border, #e5e7eb)' }}>
+                                      <div className="muted" style={{ fontSize: 12 }}>{new Date(c.fecha).toLocaleString('es-MX')}</div>
+                                      <div>{c.comentario}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
