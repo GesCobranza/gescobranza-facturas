@@ -23,11 +23,15 @@ export async function POST(request) {
   const delegacion = body.delegacion || null;
   const provNo = body.provNo || null;
   const estatus = body.estatus || null; // 'con_cr' | 'sin_cr' | null
+  const orden = body.orden || 'reciente'; // 'reciente' | 'importe_desc' | 'importe_asc'
   const exportar = body.exportar === true;
 
   function construirQuery() {
     // .eq('grupo', grupo) siempre presente y siempre el grupo YA AUTENTICADO — nunca uno enviado libremente por el cliente
-    let q = supabase.from('facturas').select(COLUMNAS_SEGURAS, { count: 'exact' }).eq('grupo', grupo).order('fecha_captura', { ascending: false });
+    let q = supabase.from('facturas').select(COLUMNAS_SEGURAS, { count: 'exact' }).eq('grupo', grupo);
+    if (orden === 'importe_desc') q = q.order('importe', { ascending: false });
+    else if (orden === 'importe_asc') q = q.order('importe', { ascending: true });
+    else q = q.order('fecha_captura', { ascending: false });
     if (delegacion) q = q.eq('delegacion', delegacion);
     if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
