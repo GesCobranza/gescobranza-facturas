@@ -643,16 +643,20 @@ async function cruzarCon5005() {
             <>
               <div className="kpi-ring-row">
                 <div className="card-hero kpi-ring-card">
-                  <svg viewBox="0 0 160 160">
-                    <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green-soft)" strokeWidth="14" />
-                    <circle
-                      cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
-                      strokeDasharray="427"
-                      strokeDashoffset={427 - (427 * (kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0)) / 100}
-                    />
-                  </svg>
-                  <div className="kpi-ring-num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div>
-                  <div className="kpi-ring-lbl">tasa de<br />recuperación</div>
+                  <div className="kpi-ring-wrap">
+                    <svg viewBox="0 0 160 160">
+                      <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green-soft)" strokeWidth="14" />
+                      <circle
+                        cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
+                        strokeDasharray="427"
+                        strokeDashoffset={427 - (427 * (kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0)) / 100}
+                      />
+                    </svg>
+                    <div className="kpi-ring-center">
+                      <div className="kpi-ring-num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div>
+                      <div className="kpi-ring-lbl">tasa de<br />recuperación</div>
+                    </div>
+                  </div>
                   <div className="kpi-ring-total">{kpiData.total} facturas totales</div>
                 </div>
                 <div className="kpi-stat-grid">
