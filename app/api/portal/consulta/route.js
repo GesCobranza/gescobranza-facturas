@@ -4,6 +4,12 @@ import { validarClavePortal } from '../../../../lib/portalAuth';
 
 const COLUMNAS_SEGURAS = 'id, alta, grupo, empresa, delegacion, importe, tiene_cr, comprobante, alerta_importe, fecha_captura, prov_no';
 
+// Quita ceros a la izquierda para que "0000146440" y "146440" se reconozcan como el mismo proveedor
+function normalizarProvNo(valor) {
+  const limpio = String(valor || '').trim().replace(/^0+/, '');
+  return limpio || '0';
+}
+
 export async function POST(request) {
   const body = await request.json();
   const grupo = String(body.grupo || '').trim();
@@ -23,7 +29,7 @@ export async function POST(request) {
     // .eq('grupo', grupo) siempre presente y siempre el grupo YA AUTENTICADO — nunca uno enviado libremente por el cliente
     let q = supabase.from('facturas').select(COLUMNAS_SEGURAS, { count: 'exact' }).eq('grupo', grupo).order('fecha_captura', { ascending: false });
     if (delegacion) q = q.eq('delegacion', delegacion);
-    if (provNo) q = q.eq('prov_no', provNo);
+    if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
     if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
     return q;
