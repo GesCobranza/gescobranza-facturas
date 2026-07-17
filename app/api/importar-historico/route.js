@@ -50,23 +50,23 @@ export async function POST(request) {
     const fila = idx + 2;
 
     if (!grupo || !empresa || !delegacionTexto || !alta || !importe || importe <= 0) {
-      omitidas.push({ fila, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).' });
+      omitidas.push({ fila, alta: alta || '(sin alta)', motivo: 'Faltan datos obligatorios (grupo, empresa, delegación, alta o importe).', categoria: 'revisar' });
       return;
     }
     if (altasEnEsteArchivo.has(alta.toLowerCase())) {
-      omitidas.push({ fila, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.' });
+      omitidas.push({ fila, alta, motivo: 'Número de alta repetido dentro de este mismo archivo.', categoria: 'informativo' });
       return;
     }
 
     const clave = claveDelegacion(delegacionTexto);
     const deleg = clave ? indiceDeleg[clave] : null;
     if (!deleg) {
-      omitidas.push({ fila, alta, motivo: `No reconozco la delegación "${delegacionTexto}" — no coincide con ningún OOAD/UMAE de tu catálogo.` });
+      omitidas.push({ fila, alta, motivo: `No reconozco la delegación "${delegacionTexto}" — no coincide con ningún OOAD/UMAE de tu catálogo.`, categoria: 'revisar' });
       return;
     }
     const codigos = deleg.codigo.split(',');
     if (!codigos.some((c) => alta.startsWith(c))) {
-      omitidas.push({ fila, alta, motivo: `El alta no coincide con el código de "${deleg.nombre}" (esperado: ${codigos.join(' o ')}).` });
+      omitidas.push({ fila, alta, motivo: `El alta no coincide con el código de "${deleg.nombre}" (esperado: ${codigos.join(' o ')}).`, categoria: 'revisar' });
       return;
     }
 
@@ -105,15 +105,20 @@ export async function POST(request) {
       if (altasGuardadas.has(c.payload.alta)) {
         insertadas++;
       } else {
-        omitidas.push({ fila: c.fila, alta: c.payload.alta, motivo: 'Ese número de alta ya existía en el sistema.' });
+        omitidas.push({ fila: c.fila, alta: c.payload.alta, motivo: 'Ese número de alta ya existía en el sistema.', categoria: 'informativo' });
       }
     });
   }
+
+  const omitidasRevisar = omitidas.filter((o) => o.categoria === 'revisar');
+  const omitidasInformativo = omitidas.filter((o) => o.categoria === 'informativo');
 
   return NextResponse.json({
     ok: true,
     insertadas,
     omitidas: omitidas.length,
+    omitidasRevisar: omitidasRevisar.length,
+    omitidasInformativo: omitidasInformativo.length,
     detalleOmitidas: omitidas,
   });
 }
