@@ -5,9 +5,31 @@ import * as XLSX from 'xlsx';
 export default function Home() {
   const [tab, setTab] = useState('captura');
   const [catalogos, setCatalogos] = useState({ grupos: [], delegaciones: [] });
-  const [facturas, setFacturas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [seleccionados, setSeleccionados] = useState(new Set());
+
+  // ---- Consulta ----
+  const [cFiltroGrupo, setCFiltroGrupo] = useState('');
+  const [cFiltroDeleg, setCFiltroDeleg] = useState('');
+  const [cFiltroProvNo, setCFiltroProvNo] = useState('');
+  const [cFiltroEstatus, setCFiltroEstatus] = useState('');
+  const [cPagina, setCPagina] = useState(1);
+  const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
+  const [consultaCargando, setConsultaCargando] = useState(false);
+  const CONSULTA_POR_PAGINA = 50;
+
+  // ---- Panel KPI ----
+  const [kFiltroGrupo, setKFiltroGrupo] = useState('');
+  const [kFiltroDeleg, setKFiltroDeleg] = useState('');
+  const [kFiltroProvNo, setKFiltroProvNo] = useState('');
+  const [kpiData, setKpiData] = useState(null);
+  const [kpiCargando, setKpiCargando] = useState(false);
+
+  // ---- Seguimiento (gestores) ----
+  const [gPagina, setGPagina] = useState(1);
+  const [seguimientoData, setSeguimientoData] = useState({ resumenPorDelegacion: [], esperando: [], filasGestores: [], totalFilasGestores: 0 });
+  const [gCargando, setGCargando] = useState(false);
+  const GESTORES_POR_PAGINA = 50;
 
   // ---- Captura ----
   const [grupo, setGrupo] = useState('');
@@ -32,7 +54,7 @@ export default function Home() {
   const [catCodigo, setCatCodigo] = useState('');
   const [catDelegNombre, setCatDelegNombre] = useState('');
 
-  // ---- Gestores (seguimiento de envío) ----
+  // ---- Gestores: filtros de detalle ----
   const [gFiltroDeleg, setGFiltroDeleg] = useState('');
   const [gFiltroEnvio, setGFiltroEnvio] = useState('');
 
@@ -43,9 +65,18 @@ export default function Home() {
   const [cargandoCruce, setCargandoCruce] = useState(false);
 
   useEffect(() => { cargarCatalogos(); }, []);
+
   useEffect(() => {
-    if (tab === 'consulta' || tab === 'panel' || tab === 'gestores') cargarFacturas();
-  }, [tab]);
+    if (tab === 'consulta') cargarConsulta();
+  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cPagina]);
+
+  useEffect(() => {
+    if (tab === 'panel') cargarKpi();
+  }, [tab, kFiltroGrupo, kFiltroDeleg, kFiltroProvNo]);
+
+  useEffect(() => {
+    if (tab === 'gestores') cargarSeguimiento();
+  }, [tab, gFiltroDeleg, gFiltroEnvio, gPagina]);
 
   async function cargarCatalogos() {
     setCargando(true);
@@ -59,10 +90,40 @@ export default function Home() {
     setCargando(false);
   }
 
-  async function cargarFacturas() {
-    const res = await fetch('/api/facturas');
+  async function cargarConsulta() {
+    setConsultaCargando(true);
+    const params = new URLSearchParams({ pagina: cPagina, porPagina: CONSULTA_POR_PAGINA });
+    if (cFiltroGrupo) params.set('grupo', cFiltroGrupo);
+    if (cFiltroDeleg) params.set('delegacion', cFiltroDeleg);
+    if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
+    if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
+    const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
-    setFacturas(data.facturas || []);
+    setConsultaData({ facturas: data.facturas || [], total: data.total || 0 });
+    setConsultaCargando(false);
+  }
+
+  async function cargarKpi() {
+    setKpiCargando(true);
+    const params = new URLSearchParams();
+    if (kFiltroGrupo) params.set('grupo', kFiltroGrupo);
+    if (kFiltroDeleg) params.set('delegacion', kFiltroDeleg);
+    if (kFiltroProvNo) params.set('provNo', kFiltroProvNo);
+    const res = await fetch('/api/kpi?' + params.toString());
+    const data = await res.json();
+    setKpiData(data.ok ? data : null);
+    setKpiCargando(false);
+  }
+
+  async function cargarSeguimiento() {
+    setGCargando(true);
+    const params = new URLSearchParams({ pagina: gPagina, porPagina: GESTORES_POR_PAGINA });
+    if (gFiltroDeleg) params.set('delegacion', gFiltroDeleg);
+    if (gFiltroEnvio) params.set('envio', gFiltroEnvio);
+    const res = await fetch('/api/seguimiento?' + params.toString());
+    const data = await res.json();
+    if (data.ok) setSeguimientoData(data);
+    setGCargando(false);
   }
 
   const grupoObj = catalogos.grupos.find((g) => g.nombre === grupo);
@@ -179,7 +240,7 @@ export default function Home() {
       body: JSON.stringify({ accion: 'marcarEnviadas', ids: Array.from(seleccionados) }),
     });
     setSeleccionados(new Set());
-    await cargarFacturas();
+    await cargarSeguimiento();
   }
   async function quitarEnviada(id) {
     await fetch('/api/facturas', {
@@ -187,7 +248,7 @@ export default function Home() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ accion: 'quitarEnviada', id }),
     });
-    await cargarFacturas();
+    await cargarSeguimiento();
   }
 
   // ---- Cruce 5005: acciones ----
@@ -203,7 +264,6 @@ export default function Home() {
       const hoja = wb.Sheets[wb.SheetNames[0]];
       const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
 
-      // Busca automáticamente en qué fila están los encabezados y en qué columna está cada dato
       let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
       for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
         const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
@@ -270,7 +330,6 @@ async function cruzarCon5005() {
       const data = await res.json();
       if (data.ok) {
         setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
-        cargarFacturas();
       } else {
         setCruceMensaje(`Error: ${data.error}`);
       }
@@ -281,37 +340,21 @@ async function cruzarCon5005() {
     }
   }
 
-  // ---- Panel KPI: cálculos ----
-  const total = facturas.length;
-  const conCR = facturas.filter((f) => f.tiene_cr);
-  const sinCR = facturas.filter((f) => !f.tiene_cr);
-  const pct = total ? Math.round((conCR.length / total) * 100) : 0;
-  const porGrupo = {};
-  facturas.forEach((f) => { porGrupo[f.grupo] = (porGrupo[f.grupo] || 0) + 1; });
-  const maxGrupo = Math.max(1, ...Object.values(porGrupo));
-
   const grupoCatObj = catalogos.grupos.find((g) => g.nombre === catGrupoSel);
   const empresasCat = grupoCatObj ? grupoCatObj.empresas : [];
 
-  // ---- Gestores: datos derivados ----
-  const pendientes = facturas.filter((f) => !f.tiene_cr && !f.enviada_gestor);
-  const pendientesPorDeleg = {};
-  pendientes.forEach((f) => {
-    if (!pendientesPorDeleg[f.delegacion]) pendientesPorDeleg[f.delegacion] = { n: 0, importe: 0 };
-    pendientesPorDeleg[f.delegacion].n++;
-    pendientesPorDeleg[f.delegacion].importe += Number(f.importe) || 0;
-  });
-  const maxPend = Math.max(1, ...Object.values(pendientesPorDeleg).map((v) => v.n));
-
-  const esperando = facturas
-    .filter((f) => f.enviada_gestor && !f.tiene_cr)
+  const esperando = (seguimientoData.esperando || [])
     .map((f) => ({ ...f, dias: Math.floor((Date.now() - new Date(f.fecha_envio)) / 86400000) }))
     .sort((a, b) => b.dias - a.dias);
+  const maxPend = Math.max(1, ...(seguimientoData.resumenPorDelegacion || []).map((v) => v.n));
+  const filasGestores = seguimientoData.filasGestores || [];
+  const totalPaginasGestores = Math.max(1, Math.ceil((seguimientoData.totalFilasGestores || 0) / GESTORES_POR_PAGINA));
+  const totalPaginasConsulta = Math.max(1, Math.ceil((consultaData.total || 0) / CONSULTA_POR_PAGINA));
 
-  let filasGestores = facturas.filter((f) => !f.tiene_cr);
-  if (gFiltroDeleg) filasGestores = filasGestores.filter((f) => f.delegacion === gFiltroDeleg);
-  if (gFiltroEnvio === 'enviada') filasGestores = filasGestores.filter((f) => f.enviada_gestor);
-  if (gFiltroEnvio === 'noenviada') filasGestores = filasGestores.filter((f) => !f.enviada_gestor);
+  const grupoFiltroObj = catalogos.grupos.find((g) => g.nombre === cFiltroGrupo);
+  const empresasFiltroConsulta = grupoFiltroObj ? grupoFiltroObj.empresas : [];
+  const grupoFiltroKpiObj = catalogos.grupos.find((g) => g.nombre === kFiltroGrupo);
+  const empresasFiltroKpi = grupoFiltroKpiObj ? grupoFiltroKpiObj.empresas : [];
 
   if (cargando) return <div className="app"><p>Cargando…</p></div>;
 
@@ -407,45 +450,135 @@ async function cruzarCon5005() {
       {tab === 'consulta' && (
         <div className="card">
           <h2>Registros capturados</h2>
-          <table>
-            <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th></tr></thead>
-            <tbody>
-              {facturas.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
-                  <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                  <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
-                  <td>
-                    {f.comprobante || '—'}
-                    {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="muted">{facturas.length} registros.</p>
+          <div className="toolbar">
+            <select value={cFiltroGrupo} onChange={(e) => { setCFiltroGrupo(e.target.value); setCFiltroProvNo(''); setCPagina(1); }}>
+              <option value="">Todos los grupos</option>
+              {catalogos.grupos.map((g) => <option key={g.nombre} value={g.nombre}>{g.nombre}</option>)}
+            </select>
+            <select value={cFiltroProvNo} onChange={(e) => { setCFiltroProvNo(e.target.value); setCPagina(1); }} disabled={!cFiltroGrupo}>
+              <option value="">{cFiltroGrupo ? 'Todos los proveedores' : 'Elige un grupo primero'}</option>
+              {empresasFiltroConsulta.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
+            </select>
+            <select value={cFiltroDeleg} onChange={(e) => { setCFiltroDeleg(e.target.value); setCPagina(1); }}>
+              <option value="">Todas las delegaciones</option>
+              {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
+            </select>
+            <select value={cFiltroEstatus} onChange={(e) => { setCFiltroEstatus(e.target.value); setCPagina(1); }}>
+              <option value="">Todos los estatus</option>
+              <option value="con_cr">Con CR</option>
+              <option value="sin_cr">Sin CR</option>
+            </select>
+          </div>
+          {consultaCargando ? <p className="muted">Cargando…</p> : (
+            <>
+              <table>
+                <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th></tr></thead>
+                <tbody>
+                  {consultaData.facturas.map((f) => (
+                    <tr key={f.id}>
+                      <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                      <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                      <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                      <td>
+                        {f.comprobante || '—'}
+                        {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="toolbar" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+                <p className="muted">{consultaData.total} registros con estos filtros.</p>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button className="btn btn-ghost btn-sm" disabled={cPagina <= 1} onClick={() => setCPagina((p) => p - 1)}>Anterior</button>
+                  <span className="muted">Página {cPagina} de {totalPaginasConsulta}</span>
+                  <button className="btn btn-ghost btn-sm" disabled={cPagina >= totalPaginasConsulta} onClick={() => setCPagina((p) => p + 1)}>Siguiente</button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
       {tab === 'panel' && (
         <>
-          <div className="kpi-grid">
-            <div className="kpi"><div className="num">{total}</div><div className="lbl">Facturas totales</div></div>
-            <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>{conCR.length}</div><div className="lbl">Con contra recibo</div></div>
-            <div className="kpi"><div className="num" style={{ color: 'var(--amber)' }}>{sinCR.length}</div><div className="lbl">Sin contra recibo</div></div>
-            <div className="kpi"><div className="num">{pct}%</div><div className="lbl">Tasa de recuperación</div></div>
-          </div>
           <div className="card">
-            <h2>Distribución por grupo</h2>
-            {Object.keys(porGrupo).length === 0 && <p className="muted">Sin datos aún.</p>}
-            {Object.entries(porGrupo).map(([g, val]) => (
-              <div className="bar-row" key={g}>
-                <div className="bar-label">{g}</div>
-                <div className="bar-track"><div className="bar-fill" style={{ width: (val / maxGrupo) * 100 + '%' }} /></div>
-                <div className="bar-val">{val}</div>
-              </div>
-            ))}
+            <div className="toolbar">
+              <select value={kFiltroGrupo} onChange={(e) => { setKFiltroGrupo(e.target.value); setKFiltroProvNo(''); }}>
+                <option value="">Todos los grupos</option>
+                {catalogos.grupos.map((g) => <option key={g.nombre} value={g.nombre}>{g.nombre}</option>)}
+              </select>
+              <select value={kFiltroProvNo} onChange={(e) => setKFiltroProvNo(e.target.value)} disabled={!kFiltroGrupo}>
+                <option value="">{kFiltroGrupo ? 'Todos los proveedores' : 'Elige un grupo primero'}</option>
+                {empresasFiltroKpi.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
+              </select>
+              <select value={kFiltroDeleg} onChange={(e) => setKFiltroDeleg(e.target.value)}>
+                <option value="">Todas las delegaciones</option>
+                {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
+              </select>
+            </div>
           </div>
+
+          {kpiCargando || !kpiData ? <p className="muted">Cargando…</p> : (
+            <>
+              <div className="kpi-grid">
+                <div className="kpi"><div className="num">{kpiData.total}</div><div className="lbl">Facturas totales</div></div>
+                <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div><div className="lbl">Con contra recibo</div></div>
+                <div className="kpi"><div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div><div className="lbl">Sin contra recibo</div></div>
+                <div className="kpi"><div className="num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div><div className="lbl">Tasa de recuperación</div></div>
+              </div>
+              <div className="kpi-grid">
+                <div className="kpi"><div className="num">${Number(kpiData.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div><div className="lbl">Importe total</div></div>
+                <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div><div className="lbl">Importe con CR</div></div>
+              </div>
+
+              <div className="card">
+                <h2>Por grupo</h2>
+                <table>
+                  <thead><tr><th>Grupo</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th></tr></thead>
+                  <tbody>
+                    {kpiData.por_grupo.map((g) => (
+                      <tr key={g.grupo}>
+                        <td>{g.grupo}</td><td>{g.total}</td><td>{g.con_cr}</td><td>{g.total - g.con_cr}</td>
+                        <td>{g.total ? Math.round((g.con_cr / g.total) * 100) : 0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="card">
+                <h2>Por delegación</h2>
+                <table>
+                  <thead><tr><th>Delegación</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th></tr></thead>
+                  <tbody>
+                    {kpiData.por_delegacion.map((d) => (
+                      <tr key={d.delegacion}>
+                        <td>{d.delegacion}</td><td>{d.total}</td><td>{d.con_cr}</td><td>{d.total - d.con_cr}</td>
+                        <td>{d.total ? Math.round((d.con_cr / d.total) * 100) : 0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="card">
+                <h2>Top proveedores por volumen</h2>
+                <table>
+                  <thead><tr><th>Proveedor</th><th>Total</th><th>Con CR</th><th>% avance</th><th>Importe total</th></tr></thead>
+                  <tbody>
+                    {kpiData.top_proveedores.map((p) => (
+                      <tr key={p.prov_no}>
+                        <td>{p.prov_nombre}</td><td>{p.total}</td><td>{p.con_cr}</td>
+                        <td>{p.total ? Math.round((p.con_cr / p.total) * 100) : 0}%</td>
+                        <td>${Number(p.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -454,19 +587,20 @@ async function cruzarCon5005() {
           <div className="card">
             <h2>Pendientes por enviar, por delegación</h2>
             <p className="muted" style={{ marginBottom: 12 }}>Sin contra recibo y aún no enviadas a ningún gestor.</p>
-            {Object.keys(pendientesPorDeleg).length === 0 && <p className="muted">No hay pendientes por enviar.</p>}
-            {Object.entries(pendientesPorDeleg).sort((a, b) => b[1].n - a[1].n).map(([d, v]) => (
-              <div className="bar-row" key={d} style={{ cursor: 'pointer' }} onClick={() => { setGFiltroDeleg(d); setGFiltroEnvio('noenviada'); }}>
-                <div className="bar-label" style={{ width: 220 }}>{d}</div>
+            {(seguimientoData.resumenPorDelegacion || []).length === 0 && <p className="muted">No hay pendientes por enviar.</p>}
+            {(seguimientoData.resumenPorDelegacion || []).map((v) => (
+              <div className="bar-row" key={v.delegacion} style={{ cursor: 'pointer' }} onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('noenviada'); setGPagina(1); }}>
+                <div className="bar-label" style={{ width: 220 }}>{v.delegacion}</div>
                 <div className="bar-track"><div className="bar-fill" style={{ width: (v.n / maxPend) * 100 + '%' }} /></div>
                 <div className="bar-val">{v.n}</div>
-                <div className="muted" style={{ width: 120, textAlign: 'right' }}>${v.importe.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                <div className="muted" style={{ width: 120, textAlign: 'right' }}>${Number(v.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
               </div>
             ))}
           </div>
 
           <div className="card">
             <h2>Enviadas — esperando contra recibo</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Hasta las 500 más antiguas — si tienes más, resuélvelas por aquí primero.</p>
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && (
               <table>
@@ -487,11 +621,11 @@ async function cruzarCon5005() {
           <div className="card">
             <h2>Detalle y marcar envío</h2>
             <div className="toolbar">
-              <select value={gFiltroDeleg} onChange={(e) => setGFiltroDeleg(e.target.value)}>
+              <select value={gFiltroDeleg} onChange={(e) => { setGFiltroDeleg(e.target.value); setGPagina(1); }}>
                 <option value="">Todas las delegaciones</option>
                 {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
               </select>
-              <select value={gFiltroEnvio} onChange={(e) => setGFiltroEnvio(e.target.value)}>
+              <select value={gFiltroEnvio} onChange={(e) => { setGFiltroEnvio(e.target.value); setGPagina(1); }}>
                 <option value="">Todas — enviadas y no enviadas</option>
                 <option value="noenviada">Aún no enviada</option>
                 <option value="enviada">Ya enviada, esperando CR</option>
@@ -504,26 +638,37 @@ async function cruzarCon5005() {
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
               </div>
             )}
-            <table>
-              <thead><tr><th></th><th>Alta</th><th>Delegación</th><th>Importe</th><th>Envío</th></tr></thead>
-              <tbody>
-                {filasGestores.map((f) => (
-                  <tr key={f.id}>
-                    <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
-                    <td>{f.alta}</td><td>{f.delegacion}</td>
-                    <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                    <td>{f.enviada_gestor
-                      ? <>
-                          <span className="tag" style={{ background: 'var(--blue-soft)', color: 'var(--blue)' }}>Enviada</span>{' '}
-                          <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
-                        </>
-                      : <span className="muted">Sin enviar</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="muted">{filasGestores.length} facturas pendientes de CR con estos filtros.</p>
+            {gCargando ? <p className="muted">Cargando…</p> : (
+              <>
+                <table>
+                  <thead><tr><th></th><th>Alta</th><th>Delegación</th><th>Importe</th><th>Envío</th></tr></thead>
+                  <tbody>
+                    {filasGestores.map((f) => (
+                      <tr key={f.id}>
+                        <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
+                        <td>{f.alta}</td><td>{f.delegacion}</td>
+                        <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                        <td>{f.enviada_gestor
+                          ? <>
+                              <span className="tag" style={{ background: 'var(--blue-soft)', color: 'var(--blue)' }}>Enviada</span>{' '}
+                              <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
+                            </>
+                          : <span className="muted">Sin enviar</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="toolbar" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+                  <p className="muted">{seguimientoData.totalFilasGestores} facturas pendientes de CR con estos filtros.</p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button className="btn btn-ghost btn-sm" disabled={gPagina <= 1} onClick={() => setGPagina((p) => p - 1)}>Anterior</button>
+                    <span className="muted">Página {gPagina} de {totalPaginasGestores}</span>
+                    <button className="btn btn-ghost btn-sm" disabled={gPagina >= totalPaginasGestores} onClick={() => setGPagina((p) => p + 1)}>Siguiente</button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </>
       )}
