@@ -3,15 +3,27 @@ import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const grupoFiltro = searchParams.get('grupo') || null;
+  const grupo = searchParams.get('grupo') || null;
+  const delegacion = searchParams.get('delegacion') || null;
+  const provNo = searchParams.get('provNo') || null;
+  const estatus = searchParams.get('estatus') || null; // 'con_cr' | 'sin_cr' | null (todos)
+  const pagina = Math.max(1, parseInt(searchParams.get('pagina') || '1', 10));
+  const porPagina = Math.min(200, Math.max(10, parseInt(searchParams.get('porPagina') || '50', 10)));
+
   const supabase = getSupabaseAdmin();
+  let query = supabase.from('facturas').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
+  if (grupo) query = query.eq('grupo', grupo);
+  if (delegacion) query = query.eq('delegacion', delegacion);
+  if (provNo) query = query.eq('prov_no', provNo);
+  if (estatus === 'con_cr') query = query.eq('tiene_cr', true);
+  if (estatus === 'sin_cr') query = query.eq('tiene_cr', false);
 
-  let query = supabase.from('facturas').select('*').order('fecha_captura', { ascending: false });
-  if (grupoFiltro) query = query.eq('grupo', grupoFiltro);
+  const desde = (pagina - 1) * porPagina;
+  query = query.range(desde, desde + porPagina - 1);
 
-  const { data, error } = await query;
+  const { data, error, count } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ facturas: data });
+  return NextResponse.json({ facturas: data, total: count, pagina, porPagina });
 }
 
 export async function POST(request) {
