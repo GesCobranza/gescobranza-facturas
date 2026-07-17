@@ -460,8 +460,11 @@ async function cruzarCon5005() {
     <div className="app">
       <div className="hero">
         <div className="brandline">
-          <div className="mark">G</div>
-          <span>Ges Cobranza</span>
+          <img src="/logo_icon.svg" alt="Ges Cobranza" style={{ height: 46, width: 46, flexShrink: 0 }} />
+          <div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", color: '#fff', fontSize: 15, fontWeight: 800, lineHeight: 1.15 }}>GESTIÓN ESPECIALIZADA</div>
+            <div style={{ fontFamily: "'Space Grotesk', sans-serif", color: 'var(--green)', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em' }}>EN COBRANZA</div>
+          </div>
         </div>
         <div className="slogan">Gestión con profesionalismo...</div>
         <div className="divider-sub">Control de captura y seguimiento de facturas.</div>
