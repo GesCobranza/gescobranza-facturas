@@ -264,6 +264,7 @@ export default function Home() {
       const hoja = wb.Sheets[wb.SheetNames[0]];
       const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
 
+      // Busca automáticamente en qué fila están los encabezados y en qué columna está cada dato
       let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
       for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
         const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
@@ -343,6 +344,7 @@ async function cruzarCon5005() {
   const grupoCatObj = catalogos.grupos.find((g) => g.nombre === catGrupoSel);
   const empresasCat = grupoCatObj ? grupoCatObj.empresas : [];
 
+  // ---- Gestores: "esperando CR" con días calculados ----
   const esperando = (seguimientoData.esperando || [])
     .map((f) => ({ ...f, dias: Math.floor((Date.now() - new Date(f.fecha_envio)) / 86400000) }))
     .sort((a, b) => b.dias - a.dias);
@@ -351,6 +353,7 @@ async function cruzarCon5005() {
   const totalPaginasGestores = Math.max(1, Math.ceil((seguimientoData.totalFilasGestores || 0) / GESTORES_POR_PAGINA));
   const totalPaginasConsulta = Math.max(1, Math.ceil((consultaData.total || 0) / CONSULTA_POR_PAGINA));
 
+  // ---- Consulta: empresas del grupo elegido en el filtro, para el selector de proveedor ----
   const grupoFiltroObj = catalogos.grupos.find((g) => g.nombre === cFiltroGrupo);
   const empresasFiltroConsulta = grupoFiltroObj ? grupoFiltroObj.empresas : [];
   const grupoFiltroKpiObj = catalogos.grupos.find((g) => g.nombre === kFiltroGrupo);
@@ -523,13 +526,17 @@ async function cruzarCon5005() {
             <>
               <div className="kpi-grid">
                 <div className="kpi"><div className="num">{kpiData.total}</div><div className="lbl">Facturas totales</div></div>
-                <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div><div className="lbl">Con contra recibo</div></div>
-                <div className="kpi"><div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div><div className="lbl">Sin contra recibo</div></div>
+                <div className="kpi">
+                  <div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div>
+                  <div className="lbl">Con contra recibo</div>
+                  <div className="muted" style={{ marginTop: 4 }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                </div>
+                <div className="kpi">
+                  <div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div>
+                  <div className="lbl">Sin contra recibo</div>
+                  <div className="muted" style={{ marginTop: 4 }}>${Number(kpiData.importe_total - kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                </div>
                 <div className="kpi"><div className="num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div><div className="lbl">Tasa de recuperación</div></div>
-              </div>
-              <div className="kpi-grid">
-                <div className="kpi"><div className="num">${Number(kpiData.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div><div className="lbl">Importe total</div></div>
-                <div className="kpi"><div className="num" style={{ color: 'var(--green)' }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div><div className="lbl">Importe con CR</div></div>
               </div>
 
               <div className="card">
@@ -541,21 +548,6 @@ async function cruzarCon5005() {
                       <tr key={g.grupo}>
                         <td>{g.grupo}</td><td>{g.total}</td><td>{g.con_cr}</td><td>{g.total - g.con_cr}</td>
                         <td>{g.total ? Math.round((g.con_cr / g.total) * 100) : 0}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="card">
-                <h2>Por delegación</h2>
-                <table>
-                  <thead><tr><th>Delegación</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th></tr></thead>
-                  <tbody>
-                    {kpiData.por_delegacion.map((d) => (
-                      <tr key={d.delegacion}>
-                        <td>{d.delegacion}</td><td>{d.total}</td><td>{d.con_cr}</td><td>{d.total - d.con_cr}</td>
-                        <td>{d.total ? Math.round((d.con_cr / d.total) * 100) : 0}%</td>
                       </tr>
                     ))}
                   </tbody>
