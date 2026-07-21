@@ -21,6 +21,8 @@ export default function PortalGrupo() {
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
   const [cOrden, setCOrden] = useState('reciente');
+  const [cBusquedaInput, setCBusquedaInput] = useState('');
+  const [cBusqueda, setCBusqueda] = useState('');
   const [cPagina, setCPagina] = useState(1);
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
   const [consultaCargando, setConsultaCargando] = useState(false);
@@ -34,8 +36,13 @@ export default function PortalGrupo() {
   const [kpiCargando, setKpiCargando] = useState(false);
 
   useEffect(() => {
+    const t = setTimeout(() => { setCBusqueda(cBusquedaInput); setCPagina(1); }, 400);
+    return () => clearTimeout(t);
+  }, [cBusquedaInput]);
+
+  useEffect(() => {
     if (autenticado && tab === 'consulta') cargarConsulta();
-  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cOrden, cPagina]);
+  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cOrden, cBusqueda, cPagina]);
 
   useEffect(() => {
     if (autenticado && tab === 'panel') cargarKpi();
@@ -73,6 +80,7 @@ export default function PortalGrupo() {
       body: JSON.stringify({
         grupo, clave,
         delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
+        busqueda: cBusqueda || null,
         pagina: cPagina, porPagina: CONSULTA_POR_PAGINA,
       }),
     });
@@ -101,6 +109,7 @@ export default function PortalGrupo() {
       body: JSON.stringify({
         grupo, clave, exportar: true,
         delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
+        busqueda: cBusqueda || null,
       }),
     });
     const data = await res.json();
@@ -182,6 +191,14 @@ export default function PortalGrupo() {
             <button className="btn btn-ghost btn-sm" onClick={exportarExcel} disabled={exportando}>
               {exportando ? 'Generando…' : 'Descargar Excel'}
             </button>
+          </div>
+          <div className="toolbar">
+            <input
+              value={cBusquedaInput}
+              onChange={(e) => setCBusquedaInput(e.target.value)}
+              placeholder="Buscar por número de alta o folio de factura…"
+              style={{ minWidth: 280 }}
+            />
           </div>
           <div className="toolbar">
             <select value={cFiltroProvNo} onChange={(e) => { setCFiltroProvNo(e.target.value); setCPagina(1); }}>
