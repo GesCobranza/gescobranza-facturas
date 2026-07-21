@@ -66,6 +66,7 @@ export default function Home() {
   // ---- Gestores: filtros de detalle ----
   const [gFiltroDeleg, setGFiltroDeleg] = useState('');
   const [gFiltroEnvio, setGFiltroEnvio] = useState('');
+  const [gOrden, setGOrden] = useState('reciente');
 
   // ---- Consulta: edición inline ----
   const [editandoId, setEditandoId] = useState(null);
@@ -100,7 +101,7 @@ export default function Home() {
 
   useEffect(() => {
     if (tab === 'gestores') cargarSeguimiento();
-  }, [tab, gFiltroDeleg, gFiltroEnvio, gPagina]);
+  }, [tab, gFiltroDeleg, gFiltroEnvio, gOrden, gPagina]);
 
   async function cargarCatalogos() {
     setCargando(true);
@@ -145,6 +146,7 @@ export default function Home() {
     const params = new URLSearchParams({ pagina: gPagina, porPagina: GESTORES_POR_PAGINA });
     if (gFiltroDeleg) params.set('delegacion', gFiltroDeleg);
     if (gFiltroEnvio) params.set('envio', gFiltroEnvio);
+    params.set('orden', gOrden);
     const res = await fetch('/api/seguimiento?' + params.toString());
     const data = await res.json();
     if (data.ok) setSeguimientoData(data);
@@ -974,6 +976,11 @@ async function cruzarCon5005() {
                 <option value="">Todas — enviadas y no enviadas</option>
                 <option value="noenviada">Aún no enviada</option>
                 <option value="enviada">Ya enviada, esperando CR</option>
+              </select>
+              <select value={gOrden} onChange={(e) => { setGOrden(e.target.value); setGPagina(1); }}>
+                <option value="reciente">Más reciente primero</option>
+                <option value="importe_desc">Importe: mayor a menor</option>
+                <option value="importe_asc">Importe: menor a mayor</option>
               </select>
             </div>
             {seleccionados.size > 0 && (
