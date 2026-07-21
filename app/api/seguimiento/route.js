@@ -17,6 +17,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const delegacion = searchParams.get('delegacion') || null;
   const envio = searchParams.get('envio') || null; // 'enviada' | 'noenviada'
+  const orden = searchParams.get('orden') || 'reciente'; // 'reciente' | 'importe_desc' | 'importe_asc'
   const pagina = Math.max(1, parseInt(searchParams.get('pagina') || '1', 10));
   const porPagina = Math.min(200, Math.max(10, parseInt(searchParams.get('porPagina') || '50', 10)));
 
@@ -35,7 +36,10 @@ export async function GET(request) {
   if (errEsp) return NextResponse.json({ ok: false, error: errEsp.message }, { status: 500 });
   const esperando = await agregarConteoComentarios(supabase, esperandoRaw);
 
-  let query = supabase.from('facturas').select('*', { count: 'exact' }).eq('tiene_cr', false).order('fecha_captura', { ascending: false });
+  let query = supabase.from('facturas').select('*', { count: 'exact' }).eq('tiene_cr', false);
+  if (orden === 'importe_desc') query = query.order('importe', { ascending: false });
+  else if (orden === 'importe_asc') query = query.order('importe', { ascending: true });
+  else query = query.order('fecha_captura', { ascending: false });
   if (delegacion) query = query.eq('delegacion', delegacion);
   if (envio === 'enviada') query = query.eq('enviada_gestor', true);
   if (envio === 'noenviada') query = query.eq('enviada_gestor', false);
