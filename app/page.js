@@ -782,14 +782,14 @@ async function cruzarCon5005() {
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
               <table>
-                <thead><tr><th>Alta</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
+                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
                 <tbody>
                   {consultaData.facturas.map((f) => (
                     <tr key={f.id}>
                       {editandoId === f.id ? (
                         <>
                           <td><input value={editAlta} onChange={(e) => setEditAlta(e.target.value)} style={{ maxWidth: 140 }} /></td>
-                          <td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td><input value={editImporte} onChange={(e) => setEditImporte(e.target.value)} style={{ maxWidth: 100 }} /></td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                           <td>{f.comprobante || '—'}</td>
@@ -801,7 +801,7 @@ async function cruzarCon5005() {
                         </>
                       ) : (
                         <>
-                          <td>{f.alta}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                           <td>
