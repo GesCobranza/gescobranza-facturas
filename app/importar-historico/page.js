@@ -8,6 +8,8 @@ export default function ImportarHistorico() {
   const [mensaje, setMensaje] = useState('');
   const [resultado, setResultado] = useState(null);
   const [procesando, setProcesando] = useState(false);
+  const [corrigiendo, setCorrigiendo] = useState(false);
+  const [resultadoCorreccion, setResultadoCorreccion] = useState(null);
 
   function formatearFecha(valor) {
     if (!valor) return null;
@@ -101,6 +103,31 @@ export default function ImportarHistorico() {
     }
   }
 
+  async function corregirPdf() {
+    if (!filasLeidas || filasLeidas.length === 0) return;
+    setCorrigiendo(true);
+    setMensaje('Corrigiendo PDF/Susceptible…');
+    setResultadoCorreccion(null);
+    try {
+      const res = await fetch('/api/importar-historico/corregir-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filas: filasLeidas }),
+      });
+      const data = await res.json();
+      setCorrigiendo(false);
+      if (data.ok) {
+        setResultadoCorreccion(data);
+        setMensaje('');
+      } else {
+        setMensaje('Error: ' + (data.error || 'No se pudo corregir.'));
+      }
+    } catch (err) {
+      setCorrigiendo(false);
+      setMensaje('Error de conexión: ' + err.message);
+    }
+  }
+
   function descargarOmitidas() {
     if (!resultado || !resultado.detalleOmitidas || resultado.detalleOmitidas.length === 0) return;
     const datos = resultado.detalleOmitidas.map((o) => ({
@@ -158,11 +185,25 @@ export default function ImportarHistorico() {
               ))}
             </tbody>
           </table>
-          <div style={{ marginTop: 14 }}>
-            <button className="btn btn-primary" onClick={confirmarImportacion} disabled={procesando}>
+          <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={confirmarImportacion} disabled={procesando || corrigiendo}>
               {procesando ? 'Importando…' : `Confirmar e importar ${filasLeidas.length} filas`}
             </button>
+            <button className="btn btn-ghost" onClick={corregirPdf} disabled={procesando || corrigiendo}>
+              {corrigiendo ? 'Corrigiendo…' : 'Corregir PDF/Susceptible de las que ya existen'}
+            </button>
           </div>
+          <p className="muted" style={{ marginTop: 8 }}>
+            El botón de corrección solo actualiza el campo PDF/Susceptible de facturas que ya están en el sistema —
+            nunca toca el estatus de CR ni el comprobante. Úsalo cuando este mismo archivo trae datos de PDF más
+            correctos que los que ya tienes guardados.
+          </p>
+          {resultadoCorreccion && (
+            <div className="alert ok" style={{ marginTop: 12 }}>
+              ✓ {resultadoCorreccion.corregidas} facturas corregidas · {resultadoCorreccion.sinCambios} ya estaban bien ·{' '}
+              {resultadoCorreccion.noEncontradas} no existían todavía en el sistema.
+            </div>
+          )}
         </div>
       )}
 
