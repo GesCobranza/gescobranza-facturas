@@ -16,6 +16,9 @@ export async function GET(request) {
   const provNo = searchParams.get('provNo') || null;
   const estatus = searchParams.get('estatus') || null; // 'con_cr' | 'sin_cr' | null (todos)
   const conObservacion = searchParams.get('conObservacion') === '1';
+  const capturista = searchParams.get('capturista') || null;
+  const fechaDesde = searchParams.get('fechaDesde') || null;
+  const fechaHasta = searchParams.get('fechaHasta') || null;
   const exportar = searchParams.get('exportar') === '1';
 
   const supabase = getSupabaseAdmin();
@@ -28,6 +31,9 @@ export async function GET(request) {
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
     if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
     if (conObservacion) q = q.not('alerta_importe', 'is', null);
+    if (capturista) q = q.eq('capturista', capturista);
+    if (fechaDesde) q = q.gte('fecha_captura', fechaDesde + 'T00:00:00');
+    if (fechaHasta) q = q.lte('fecha_captura', fechaHasta + 'T23:59:59');
     return q;
   }
 
