@@ -14,6 +14,8 @@ export default function Home() {
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
   const [cFiltroObservacion, setCFiltroObservacion] = useState(false);
+  const [cBusquedaInput, setCBusquedaInput] = useState('');
+  const [cBusqueda, setCBusqueda] = useState('');
   const [cFiltroCapturista, setCFiltroCapturista] = useState('');
   const [cFiltroFechaDesde, setCFiltroFechaDesde] = useState('');
   const [cFiltroFechaHasta, setCFiltroFechaHasta] = useState('');
@@ -95,8 +97,13 @@ export default function Home() {
   useEffect(() => { cargarCatalogos(); }, []);
 
   useEffect(() => {
+    const t = setTimeout(() => { setCBusqueda(cBusquedaInput); setCPagina(1); }, 400);
+    return () => clearTimeout(t);
+  }, [cBusquedaInput]);
+
+  useEffect(() => {
     if (tab === 'consulta') cargarConsulta();
-  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cFiltroCapturista, cFiltroFechaDesde, cFiltroFechaHasta, cPagina]);
+  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cFiltroCapturista, cFiltroFechaDesde, cFiltroFechaHasta, cBusqueda, cPagina]);
 
   useEffect(() => {
     if (tab === 'panel') cargarKpi();
@@ -129,6 +136,7 @@ export default function Home() {
     if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
     if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
     if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
+    if (cBusqueda) params.set('busqueda', cBusqueda);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     setConsultaData({ facturas: data.facturas || [], total: data.total || 0 });
@@ -398,6 +406,7 @@ export default function Home() {
     if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
     if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
     if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
+    if (cBusqueda) params.set('busqueda', cBusqueda);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     const filas = (data.facturas || []).map((f) => ({
@@ -733,6 +742,14 @@ async function cruzarCon5005() {
             <button className="btn btn-ghost btn-sm" onClick={exportarConsultaExcel} disabled={exportando}>
               {exportando ? 'Generando…' : 'Descargar Excel'}
             </button>
+          </div>
+          <div className="toolbar">
+            <input
+              value={cBusquedaInput}
+              onChange={(e) => setCBusquedaInput(e.target.value)}
+              placeholder="Buscar por número de alta o folio de factura…"
+              style={{ minWidth: 280 }}
+            />
           </div>
           <div className="toolbar">
             <select value={cFiltroGrupo} onChange={(e) => { setCFiltroGrupo(e.target.value); setCFiltroProvNo(''); setCPagina(1); }}>
