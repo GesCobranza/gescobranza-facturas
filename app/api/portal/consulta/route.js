@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 import { validarClavePortal } from '../../../../lib/portalAuth';
 
-const COLUMNAS_SEGURAS = 'id, alta, grupo, empresa, delegacion, importe, tiene_cr, comprobante, alerta_importe, fecha_captura, prov_no';
+const COLUMNAS_SEGURAS = 'id, alta, grupo, empresa, delegacion, importe, tiene_cr, comprobante, alerta_importe, fecha_captura, prov_no, num_factura';
 
 // Quita ceros a la izquierda para que "0000146440" y "146440" se reconozcan como el mismo proveedor
 function normalizarProvNo(valor) {
@@ -24,6 +24,7 @@ export async function POST(request) {
   const provNo = body.provNo || null;
   const estatus = body.estatus || null; // 'con_cr' | 'sin_cr' | null
   const orden = body.orden || 'reciente'; // 'reciente' | 'importe_desc' | 'importe_asc'
+  const busqueda = String(body.busqueda || '').trim();
   const exportar = body.exportar === true;
 
   function construirQuery() {
@@ -36,6 +37,10 @@ export async function POST(request) {
     if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
     if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
+    if (busqueda) {
+      const esc = busqueda.replace(/[%_]/g, '\\$&');
+      q = q.or(`alta.ilike.%${esc}%,num_factura.ilike.%${esc}%`);
+    }
     return q;
   }
 
