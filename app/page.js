@@ -171,6 +171,13 @@ export default function Home() {
   const empresas = grupoObj ? grupoObj.empresas : [];
   const empresaObj = empresas.find((e) => e.numero === empresaNumero);
 
+  function formatearFechaCaptura(valor) {
+    if (!valor) return '—';
+    const d = new Date(valor);
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
   function formatearImporte(valorInput) {
     let digitos = valorInput.replace(/\D/g, '');
     digitos = digitos.replace(/^0+/, '') || '0';
@@ -799,7 +806,7 @@ async function cruzarCon5005() {
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
               <table>
-                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
+                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
                 <tbody>
                   {consultaData.facturas.map((f) => (
                     <tr key={f.id}>
@@ -808,6 +815,7 @@ async function cruzarCon5005() {
                           <td><input value={editAlta} onChange={(e) => setEditAlta(e.target.value)} style={{ maxWidth: 140 }} /></td>
                           <td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td><input value={editImporte} onChange={(e) => setEditImporte(e.target.value)} style={{ maxWidth: 100 }} /></td>
+                          <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                           <td>{f.comprobante || '—'}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>
@@ -820,6 +828,7 @@ async function cruzarCon5005() {
                         <>
                           <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                          <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                           <td>
                             {f.comprobante || '—'}
@@ -959,13 +968,14 @@ async function cruzarCon5005() {
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && (
               <table>
-                <thead><tr><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
+                <thead><tr><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
                 <tbody>
                   {esperando.map((f) => (
                     <Fragment key={f.id}>
                       <tr>
                         <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                        <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                         <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
                         <td>
                           <button className="btn btn-ghost btn-sm" onClick={() => comentarioFacturaId === f.id ? cerrarComentarios() : abrirComentarios(f.id)}>
@@ -1039,13 +1049,14 @@ async function cruzarCon5005() {
             {gCargando ? <p className="muted">Cargando…</p> : (
               <>
                 <table>
-                  <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Envío</th><th>Comentarios</th></tr></thead>
+                  <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Envío</th><th>Comentarios</th></tr></thead>
                   <tbody>
                     {filasGestores.map((f) => (
                       <tr key={f.id}>
                         <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
                         <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                        <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                         <td>{f.enviada_gestor
                           ? <>
                               <span className="tag tag-enviada">Enviada</span>{' '}
