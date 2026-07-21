@@ -14,6 +14,9 @@ export default function Home() {
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
   const [cFiltroObservacion, setCFiltroObservacion] = useState(false);
+  const [cFiltroCapturista, setCFiltroCapturista] = useState('');
+  const [cFiltroFechaDesde, setCFiltroFechaDesde] = useState('');
+  const [cFiltroFechaHasta, setCFiltroFechaHasta] = useState('');
   const [cPagina, setCPagina] = useState(1);
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
   const [consultaCargando, setConsultaCargando] = useState(false);
@@ -93,7 +96,7 @@ export default function Home() {
 
   useEffect(() => {
     if (tab === 'consulta') cargarConsulta();
-  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cPagina]);
+  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cFiltroCapturista, cFiltroFechaDesde, cFiltroFechaHasta, cPagina]);
 
   useEffect(() => {
     if (tab === 'panel') cargarKpi();
@@ -123,6 +126,9 @@ export default function Home() {
     if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
     if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
     if (cFiltroObservacion) params.set('conObservacion', '1');
+    if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
+    if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
+    if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     setConsultaData({ facturas: data.facturas || [], total: data.total || 0 });
@@ -389,6 +395,9 @@ export default function Home() {
     if (cFiltroProvNo) params.set('provNo', cFiltroProvNo);
     if (cFiltroEstatus) params.set('estatus', cFiltroEstatus);
     if (cFiltroObservacion) params.set('conObservacion', '1');
+    if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
+    if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
+    if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
     const filas = (data.facturas || []).map((f) => ({
@@ -743,12 +752,32 @@ async function cruzarCon5005() {
               <option value="con_cr">Con CR</option>
               <option value="sin_cr">Sin CR</option>
             </select>
+            <select value={cFiltroCapturista} onChange={(e) => { setCFiltroCapturista(e.target.value); setCPagina(1); }}>
+              <option value="">Todos los capturistas</option>
+              <option value="Sophie">Sophie</option>
+              <option value="Mariano">Mariano</option>
+            </select>
             <button
               className={cFiltroObservacion ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
               onClick={() => { setCFiltroObservacion((v) => !v); setCPagina(1); }}
             >
               ⚠ Solo con observaciones
             </button>
+          </div>
+          <div className="toolbar">
+            <div className="field" style={{ maxWidth: 180 }}>
+              <label>Capturado desde</label>
+              <input type="date" value={cFiltroFechaDesde} onChange={(e) => { setCFiltroFechaDesde(e.target.value); setCPagina(1); }} />
+            </div>
+            <div className="field" style={{ maxWidth: 180 }}>
+              <label>Capturado hasta</label>
+              <input type="date" value={cFiltroFechaHasta} onChange={(e) => { setCFiltroFechaHasta(e.target.value); setCPagina(1); }} />
+            </div>
+            {(cFiltroFechaDesde || cFiltroFechaHasta) && (
+              <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => { setCFiltroFechaDesde(''); setCFiltroFechaHasta(''); setCPagina(1); }}>
+                Quitar fechas
+              </button>
+            )}
           </div>
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
@@ -913,12 +942,12 @@ async function cruzarCon5005() {
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && (
               <table>
-                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
+                <thead><tr><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
                 <tbody>
                   {esperando.map((f) => (
                     <Fragment key={f.id}>
                       <tr>
-                        <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
+                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
                         <td>
@@ -993,12 +1022,12 @@ async function cruzarCon5005() {
             {gCargando ? <p className="muted">Cargando…</p> : (
               <>
                 <table>
-                  <thead><tr><th></th><th>Alta</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Envío</th><th>Comentarios</th></tr></thead>
+                  <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Envío</th><th>Comentarios</th></tr></thead>
                   <tbody>
                     {filasGestores.map((f) => (
                       <tr key={f.id}>
                         <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
-                        <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
+                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td>{f.enviada_gestor
                           ? <>
