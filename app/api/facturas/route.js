@@ -19,6 +19,7 @@ export async function GET(request) {
   const capturista = searchParams.get('capturista') || null;
   const fechaDesde = searchParams.get('fechaDesde') || null;
   const fechaHasta = searchParams.get('fechaHasta') || null;
+  const busqueda = searchParams.get('busqueda') || null;
   const exportar = searchParams.get('exportar') === '1';
 
   const supabase = getSupabaseAdmin();
@@ -33,6 +34,10 @@ export async function GET(request) {
     if (conObservacion) q = q.not('alerta_importe', 'is', null);
     if (capturista) q = q.eq('capturista', capturista);
     if (fechaDesde) q = q.gte('fecha_captura', fechaDesde + 'T00:00:00');
+    if (busqueda) {
+      const esc = busqueda.trim().replace(/[%_]/g, '\\$&');
+      q = q.or(`alta.ilike.%${esc}%,num_factura.ilike.%${esc}%`);
+    }
     if (fechaHasta) q = q.lte('fecha_captura', fechaHasta + 'T23:59:59');
     return q;
   }
