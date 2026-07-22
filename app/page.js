@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, Fragment } from 'react';
 import * as XLSX from 'xlsx';
+import { subirArchivoDirecto } from '../lib/supabaseClient';
 
 export default function Home() {
   const [tab, setTab] = useState('captura');
@@ -83,6 +84,11 @@ export default function Home() {
 
   // ---- Comentarios (Seguimiento Envío) ----
   const [comentarioFacturaId, setComentarioFacturaId] = useState(null);
+  const [comprobantePanelAbierto, setComprobantePanelAbierto] = useState(false);
+  const [comprobanteArchivo, setComprobanteArchivo] = useState(null);
+  const [comprobanteNumero, setComprobanteNumero] = useState('');
+  const [comprobanteSubiendo, setComprobanteSubiendo] = useState(false);
+  const [comprobanteMensaje, setComprobanteMensaje] = useState('');
   const [comentarios, setComentarios] = useState([]);
   const [comentarioTexto, setComentarioTexto] = useState('');
   const [comentarioCargando, setComentarioCargando] = useState(false);
@@ -372,6 +378,52 @@ export default function Home() {
     await cargarSeguimiento();
   }
 
+  async function subirComprobante() {
+    if (!comprobanteArchivo || seleccionados.size === 0) return;
+    setComprobanteSubiendo(true);
+    setComprobanteMensaje('');
+    try {
+      const resSolicitud = await fetch('/api/storage/solicitar-subida', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carpeta: 'comprobantes', archivos: [{ nombre: comprobanteArchivo.name }] }),
+      });
+      const dataSolicitud = await resSolicitud.json();
+      if (!dataSolicitud.ok) {
+        setComprobanteMensaje('Error: ' + dataSolicitud.error);
+        setComprobanteSubiendo(false);
+        return;
+      }
+      const info = dataSolicitud.archivos[0];
+      await subirArchivoDirecto(comprobanteArchivo, info.path, info.token);
+
+      const resAdjuntar = await fetch('/api/facturas/adjuntar-comprobante', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(seleccionados), path: info.path, numeroComprobante: comprobanteNumero }),
+      });
+      const dataAdjuntar = await resAdjuntar.json();
+      if (dataAdjuntar.ok) {
+        setComprobantePanelAbierto(false);
+        setComprobanteArchivo(null);
+        setComprobanteNumero('');
+        setSeleccionados(new Set());
+        await cargarSeguimiento();
+      } else {
+        setComprobanteMensaje('Error: ' + dataAdjuntar.error);
+      }
+    } catch (err) {
+      setComprobanteMensaje('Error al subir: ' + err.message);
+    }
+    setComprobanteSubiendo(false);
+  }
+
+  async function verComprobante(path) {
+    const res = await fetch('/api/storage/descargar?path=' + encodeURIComponent(path));
+    const data = await res.json();
+    if (data.ok) window.open(data.url, '_blank');
+  }
+
   // ---- Consulta: editar (solo alta e importe) ----
   function empezarEdicion(f) {
     setEditandoId(f.id);
@@ -588,6 +640,7 @@ async function cruzarCon5005() {
         <button className={tab === 'gestores' ? 'active' : ''} onClick={() => setTab('gestores')}>Seguimiento Envío</button>
         <button className={tab === 'cruce' ? 'active' : ''} onClick={() => setTab('cruce')}>Cruce 5005</button>
         <button className={tab === 'catalogos' ? 'active' : ''} onClick={() => setTab('catalogos')}>Catálogos</button>
+        <a href="/documentos" style={{ padding: '9px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13, color: 'var(--text-soft)', textDecoration: 'none' }}>Documentos</a>
       </nav>
 
       {tab === 'captura' && (
@@ -832,6 +885,9 @@ async function cruzarCon5005() {
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                           <td>
                             {f.comprobante || '—'}
+                            {f.comprobante_archivo && (
+                              <div><a href="#" onClick={(e) => { e.preventDefault(); verComprobante(f.comprobante_archivo); }}>📎 Ver comprobante</a></div>
+                            )}
                             {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
                           </td>
                           <td><button className="btn btn-ghost btn-sm" onClick={() => empezarEdicion(f)}>Editar</button></td>
@@ -973,7 +1029,7 @@ async function cruzarCon5005() {
                   {esperando.map((f) => (
                     <Fragment key={f.id}>
                       <tr>
-                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
+                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                         <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
@@ -1040,10 +1096,32 @@ async function cruzarCon5005() {
               </select>
             </div>
             {seleccionados.size > 0 && (
-              <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span>{seleccionados.size} seleccionada(s)</span>
                 <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas a gestor</button>
+                <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
+              </div>
+            )}
+            {comprobantePanelAbierto && (
+              <div className="card" style={{ border: '2px solid var(--green)', margin: '12px 0' }}>
+                <h2>Adjuntar comprobante de contra recibo</h2>
+                <p className="muted" style={{ marginBottom: 12 }}>
+                  Esto marca las {seleccionados.size} facturas seleccionadas como <b>Con CR</b> de inmediato — no espera al Cruce 5005.
+                </p>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>Archivo del comprobante (foto o escaneo)</label>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setComprobanteArchivo(e.target.files[0] || null)} />
+                </div>
+                <div className="field" style={{ maxWidth: 260, marginBottom: 12 }}>
+                  <label>Número de comprobante (opcional)</label>
+                  <input value={comprobanteNumero} onChange={(e) => setComprobanteNumero(e.target.value)} placeholder="Si lo tienes a la mano" />
+                </div>
+                {comprobanteMensaje && <div className="alert error">{comprobanteMensaje}</div>}
+                <button className="btn btn-primary" onClick={subirComprobante} disabled={comprobanteSubiendo || !comprobanteArchivo}>
+                  {comprobanteSubiendo ? 'Subiendo…' : 'Guardar y marcar Con CR'}
+                </button>{' '}
+                <button className="btn btn-ghost" onClick={() => setComprobantePanelAbierto(false)}>Cancelar</button>
               </div>
             )}
             {gCargando ? <p className="muted">Cargando…</p> : (
@@ -1054,7 +1132,7 @@ async function cruzarCon5005() {
                     {filasGestores.map((f) => (
                       <tr key={f.id}>
                         <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
-                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf || '—'}</td><td>{f.delegacion}</td>
+                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                         <td>{f.enviada_gestor
