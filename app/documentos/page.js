@@ -115,12 +115,11 @@ function DocumentosInterior() {
 
   return (
     <div className="app">
-      <a href="/" className="btn btn-ghost btn-sm" style={{ display: 'inline-block', marginBottom: 16, textDecoration: 'none' }}>← Regresar al menú principal</a>
       <div className="hero">
         <div className="brandline">
           <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 40, width: 'auto', flexShrink: 0, filter: 'brightness(0) invert(1)' }} />
         </div>
-        <div className="slogan">Documentos</div>
+        <div className="slogan">Carga de PDFs</div>
         <div className="divider-sub">Repositorio de PDFs de los clientes — súbelos aquí y jálalos por folio.</div>
       </div>
 
