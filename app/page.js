@@ -45,6 +45,8 @@ export default function Home() {
   const [pdf, setPdf] = useState('');
   const [numFactura, setNumFactura] = useState('');
   const [alta, setAlta] = useState('');
+  const [altaExiste, setAltaExiste] = useState(false);
+  const [verificandoAlta, setVerificandoAlta] = useState(false);
   const [importeTexto, setImporteTexto] = useState('');
   const [importeRaw, setImporteRaw] = useState(0);
   const [capturista, setCapturista] = useState('Sophie');
@@ -185,6 +187,19 @@ export default function Home() {
     return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  async function verificarAltaExistente(valor) {
+    if (!valor || !valor.trim()) { setAltaExiste(false); return; }
+    setVerificandoAlta(true);
+    try {
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(valor.trim()));
+      const data = await res.json();
+      setAltaExiste(data.ok ? data.existe : false);
+    } catch (err) {
+      // si falla la verificación, no bloqueamos — el servidor la revisa de todas formas al guardar
+    }
+    setVerificandoAlta(false);
+  }
+
   function formatearImporte(valorInput) {
     let digitos = valorInput.replace(/\D/g, '');
     digitos = digitos.replace(/^0+/, '') || '0';
@@ -273,9 +288,22 @@ export default function Home() {
     return { ok, hint: ok ? `✓ Coincide con ${codigos.join(' o ')}` : `✗ Debe iniciar con ${codigos.join(' o ')}` };
   }
 
+  async function verificarAltaLoteExistente(idx, valor) {
+    if (!valor || !valor.trim()) return;
+    try {
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(valor.trim()));
+      const data = await res.json();
+      if (data.ok) {
+        setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, existeEnServidor: data.existe } : f)));
+      }
+    } catch (err) {
+      // si falla, no bloqueamos aquí — el servidor lo revisa de nuevo al guardar
+    }
+  }
+
   const loteTodoListo = loteFilas.length > 0
     && grupo && empresaObj && delegacion && pdf
-    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && validarAltaLote(f.alta).ok);
+    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && validarAltaLote(f.alta).ok && !f.existeEnServidor);
 
   const loteAltasDuplicadasEntreSi = (() => {
     const vistos = new Set();
@@ -675,6 +703,13 @@ async function cruzarCon5005() {
   const totalPaginasGestores = Math.max(1, Math.ceil((seguimientoData.totalFilasGestores || 0) / GESTORES_POR_PAGINA));
   const totalPaginasConsulta = Math.max(1, Math.ceil((consultaData.total || 0) / CONSULTA_POR_PAGINA));
 
+  // Suma de importes de las facturas seleccionadas — para comparar contra el total del CR físico
+  const sumaSeleccionados = (() => {
+    const mapaImportes = {};
+    [...esperando, ...filasGestores].forEach((f) => { mapaImportes[f.id] = Number(f.importe) || 0; });
+    return Array.from(seleccionados).reduce((total, id) => total + (mapaImportes[id] || 0), 0);
+  })();
+
   // ---- Consulta: empresas del grupo elegido en el filtro, para el selector de proveedor ----
   const grupoFiltroObj = catalogos.grupos.find((g) => g.nombre === cFiltroGrupo);
   const empresasFiltroConsulta = grupoFiltroObj ? grupoFiltroObj.empresas : [];
@@ -775,7 +810,14 @@ async function cruzarCon5005() {
                 </div>
                 <div className="field">
                   <label>Número de alta ⚠ crítico</label>
-                  <input value={alta} onChange={(e) => setAlta(e.target.value)} placeholder="Ej. AL-2026-00981" />
+                  <input
+                    value={alta}
+                    onChange={(e) => { setAlta(e.target.value); setAltaExiste(false); }}
+                    onBlur={(e) => verificarAltaExistente(e.target.value)}
+                    placeholder="Ej. AL-2026-00981"
+                  />
+                  {verificandoAlta && <span className="hint muted">Verificando…</span>}
+                  {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes — revisa si es duplicado</span>}
                   <span className="hint">{altaHint}</span>
                 </div>
               </div>
@@ -786,7 +828,7 @@ async function cruzarCon5005() {
                   <option value="Mariano">Mariano</option>
                 </select>
               </div>
-              <button className="btn btn-primary" onClick={guardar} disabled={guardando}>
+              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste}>
                 {guardando ? 'Guardando…' : 'Guardar factura'}
               </button>
             </>
@@ -819,12 +861,19 @@ async function cruzarCon5005() {
                           <tr key={idx}>
                             <td className="muted">{idx + 1}</td>
                             <td>
-                              <input value={f.alta} onChange={(e) => actualizarFilaLote(idx, 'alta', e.target.value)} placeholder="Ej. AL-2026-00981" style={{ minWidth: 160 }} />
+                              <input
+                                value={f.alta}
+                                onChange={(e) => actualizarFilaLote(idx, 'alta', e.target.value)}
+                                onBlur={(e) => verificarAltaLoteExistente(idx, e.target.value)}
+                                placeholder="Ej. AL-2026-00981"
+                                style={{ minWidth: 160 }}
+                              />
                               {f.alta && (
                                 <span className="hint" style={{ color: dup ? 'var(--red)' : (val.ok ? 'var(--green)' : 'var(--red)') }}>
                                   {dup ? '✗ Alta repetida en este mismo lote' : val.hint}
                                 </span>
                               )}
+                              {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada antes</span>}
                             </td>
                             <td><input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} /></td>
                             <td><input value={f.numFactura} onChange={(e) => actualizarFilaLote(idx, 'numFactura', e.target.value)} placeholder="Si es distinto al PDF" style={{ minWidth: 140 }} /></td>
@@ -1095,7 +1144,7 @@ async function cruzarCon5005() {
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && seleccionados.size > 0 && (
               <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span>{seleccionados.size} seleccionada(s)</span>
+                <span>{seleccionados.size} seleccionada(s) · Suma: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                 <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
               </div>
@@ -1106,6 +1155,12 @@ async function cruzarCon5005() {
                 <p className="muted" style={{ marginBottom: 12 }}>
                   Esto marca las {seleccionados.size} facturas seleccionadas como <b>Con CR</b> de inmediato — no espera al Cruce 5005.
                 </p>
+                <div className="alert ok" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
+                  Suma seleccionada: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                  <span className="muted" style={{ fontWeight: 400, fontSize: 13, display: 'block', marginTop: 2 }}>
+                    Compárala contra el importe total que trae el CR físico antes de subir.
+                  </span>
+                </div>
                 <div className="field" style={{ marginBottom: 12 }}>
                   <label>Archivo del comprobante (foto o escaneo)</label>
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setComprobanteArchivo(e.target.files[0] || null)} />
@@ -1163,7 +1218,7 @@ async function cruzarCon5005() {
             </div>
             {seleccionados.size > 0 && (
               <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span>{seleccionados.size} seleccionada(s)</span>
+                <span>{seleccionados.size} seleccionada(s) · Suma: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
                 <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas a gestor</button>
                 <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
