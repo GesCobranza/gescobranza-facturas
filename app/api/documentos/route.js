@@ -39,3 +39,22 @@ export async function PATCH(request) {
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(request) {
+  const { searchParams } = new URL(request.url);
+  const id = searchParams.get('id');
+  if (!id) return NextResponse.json({ ok: false, error: 'Falta el id del documento.' });
+
+  const supabase = getSupabaseAdmin();
+  const { data: doc, error: errDoc } = await supabase.from('documentos').select('storage_path').eq('id', id).maybeSingle();
+  if (errDoc) return NextResponse.json({ ok: false, error: errDoc.message }, { status: 500 });
+  if (!doc) return NextResponse.json({ ok: false, error: 'Ese documento ya no existe.' });
+
+  const { error: errStorage } = await supabase.storage.from('documentos').remove([doc.storage_path]);
+  if (errStorage) return NextResponse.json({ ok: false, error: errStorage.message }, { status: 500 });
+
+  const { error: errDelete } = await supabase.from('documentos').delete().eq('id', id);
+  if (errDelete) return NextResponse.json({ ok: false, error: errDelete.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}
