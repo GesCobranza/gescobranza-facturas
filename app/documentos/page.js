@@ -115,6 +115,7 @@ function DocumentosInterior() {
 
   return (
     <div className="app">
+      <a href="/" className="btn btn-ghost btn-sm" style={{ display: 'inline-block', marginBottom: 16, textDecoration: 'none' }}>← Regresar al menú principal</a>
       <div className="hero">
         <div className="brandline">
           <img src="/logo_full_horizontal.svg" alt="Gestión Especializada en Cobranza" style={{ height: 40, width: 'auto', flexShrink: 0, filter: 'brightness(0) invert(1)' }} />
