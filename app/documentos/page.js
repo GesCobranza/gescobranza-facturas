@@ -111,6 +111,17 @@ function DocumentosInterior() {
     await cargar();
   }
 
+  async function eliminarDocumento(id, nombre) {
+    if (!window.confirm(`¿Eliminar "${nombre}"? Esto borra el archivo por completo y no se puede deshacer.`)) return;
+    const res = await fetch('/api/documentos?id=' + id, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.ok) {
+      await cargar();
+    } else {
+      alert('Error al eliminar: ' + data.error);
+    }
+  }
+
   const totalPaginas = Math.max(1, Math.ceil((data.total || 0) / POR_PAGINA));
 
   return (
@@ -204,7 +215,8 @@ function DocumentosInterior() {
                         <td className="muted">{new Date(d.fecha_subida).toLocaleDateString('es-MX')}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>
                           <button className="btn btn-ghost btn-sm" onClick={() => descargar(d.id)}>Descargar</button>{' '}
-                          <button className="btn btn-ghost btn-sm" onClick={() => empezarEdicion(d)}>Etiquetar</button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => empezarEdicion(d)}>Etiquetar</button>{' '}
+                          <button className="btn btn-danger btn-sm" onClick={() => eliminarDocumento(d.id, d.nombre_original)}>Eliminar</button>
                         </td>
                       </>
                     )}
