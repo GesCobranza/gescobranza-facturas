@@ -84,6 +84,7 @@ export default function Home() {
 
   // ---- Comentarios (Seguimiento Envío) ----
   const [comentarioFacturaId, setComentarioFacturaId] = useState(null);
+  const [agruparPor, setAgruparPor] = useState('ninguno');
   const [comprobantePanelAbierto, setComprobantePanelAbierto] = useState(false);
   const [comprobanteArchivo, setComprobanteArchivo] = useState(null);
   const [comprobanteNumero, setComprobanteNumero] = useState('');
@@ -606,7 +607,70 @@ async function cruzarCon5005() {
   const esperando = (seguimientoData.esperando || [])
     .map((f) => ({ ...f, dias: Math.floor((Date.now() - new Date(f.fecha_envio)) / 86400000) }))
     .sort((a, b) => b.dias - a.dias);
+  const gruposEsperando = agruparPor === 'ninguno'
+    ? null
+    : Object.entries(
+        esperando.reduce((acc, f) => {
+          const clave = agruparPor === 'grupo' ? f.grupo : f.delegacion;
+          if (!acc[clave]) acc[clave] = [];
+          acc[clave].push(f);
+          return acc;
+        }, {})
+      ).sort((a, b) => b[1].length - a[1].length);
   const maxPend = Math.max(1, ...(seguimientoData.resumenPorDelegacion || []).map((v) => v.n));
+
+  function filaEsperando(f) {
+    return (
+      <Fragment key={f.id}>
+        <tr>
+          <td><input type="checkbox" checked={seleccionados.has(f.id)} onChange={() => toggleSeleccion(f.id)} /></td>
+          <td>{f.alta}</td><td>{f.empresa}</td>
+          <td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td>
+          <td>{f.delegacion}</td>
+          <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+          <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
+          <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
+          <td>
+            <button className="btn btn-ghost btn-sm" onClick={() => comentarioFacturaId === f.id ? cerrarComentarios() : abrirComentarios(f.id)}>
+              💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
+            </button>
+          </td>
+        </tr>
+        {comentarioFacturaId === f.id && (
+          <tr>
+            <td colSpan={9} style={{ background: 'var(--bg-soft, #f7f8fa)', padding: 16 }}>
+              <div className="row-inline">
+                <input
+                  placeholder="Ej. Gestor indica falta firma en el comprobante, se reenvía 10/07"
+                  value={comentarioTexto}
+                  onChange={(e) => setComentarioTexto(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') guardarComentario(); }}
+                  autoFocus
+                />
+                <button className="btn btn-primary btn-sm" onClick={guardarComentario} disabled={comentarioGuardando}>
+                  {comentarioGuardando ? 'Guardando…' : 'Agregar'}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={cerrarComentarios}>Cerrar</button>
+              </div>
+              {comentarioCargando ? <p className="muted">Cargando…</p> : (
+                comentarios.length === 0 ? <p className="muted">Sin comentarios todavía.</p> : (
+                  <div style={{ marginTop: 10 }}>
+                    {comentarios.map((c) => (
+                      <div key={c.id} style={{ padding: '8px 0', borderTop: '1px solid var(--border, #e5e7eb)' }}>
+                        <div className="muted" style={{ fontSize: 12 }}>{new Date(c.fecha).toLocaleString('es-MX')}</div>
+                        <div>{c.comentario}</div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  }
+
   const filasGestores = seguimientoData.filasGestores || [];
   const totalPaginasGestores = Math.max(1, Math.ceil((seguimientoData.totalFilasGestores || 0) / GESTORES_POR_PAGINA));
   const totalPaginasConsulta = Math.max(1, Math.ceil((consultaData.total || 0) / CONSULTA_POR_PAGINA));
@@ -1019,61 +1083,63 @@ async function cruzarCon5005() {
           </div>
 
           <div className="card">
-            <h2>Enviadas — esperando contra recibo</h2>
+            <div className="toolbar" style={{ justifyContent: 'space-between' }}>
+              <h2 style={{ margin: 0 }}>Enviadas — esperando contra recibo</h2>
+              <select value={agruparPor} onChange={(e) => setAgruparPor(e.target.value)}>
+                <option value="ninguno">Sin agrupar</option>
+                <option value="delegacion">Agrupar por delegación</option>
+                <option value="grupo">Agrupar por grupo</option>
+              </select>
+            </div>
             <p className="muted" style={{ marginBottom: 12 }}>Hasta las 500 más antiguas — si tienes más, resuélvelas por aquí primero.</p>
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
+            {esperando.length > 0 && seleccionados.size > 0 && (
+              <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span>{seleccionados.size} seleccionada(s)</span>
+                <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
+              </div>
+            )}
+            {comprobantePanelAbierto && (
+              <div className="card" style={{ border: '2px solid var(--green)', margin: '0 0 12px' }}>
+                <h2>Adjuntar comprobante de contra recibo</h2>
+                <p className="muted" style={{ marginBottom: 12 }}>
+                  Esto marca las {seleccionados.size} facturas seleccionadas como <b>Con CR</b> de inmediato — no espera al Cruce 5005.
+                </p>
+                <div className="field" style={{ marginBottom: 12 }}>
+                  <label>Archivo del comprobante (foto o escaneo)</label>
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setComprobanteArchivo(e.target.files[0] || null)} />
+                </div>
+                <div className="field" style={{ maxWidth: 260, marginBottom: 12 }}>
+                  <label>Número de comprobante (opcional)</label>
+                  <input value={comprobanteNumero} onChange={(e) => setComprobanteNumero(e.target.value)} placeholder="Si lo tienes a la mano" />
+                </div>
+                {comprobanteMensaje && <div className="alert error">{comprobanteMensaje}</div>}
+                <button className="btn btn-primary" onClick={subirComprobante} disabled={comprobanteSubiendo || !comprobanteArchivo}>
+                  {comprobanteSubiendo ? 'Subiendo…' : 'Guardar y marcar Con CR'}
+                </button>{' '}
+                <button className="btn btn-ghost" onClick={() => setComprobantePanelAbierto(false)}>Cancelar</button>
+              </div>
+            )}
             {esperando.length > 0 && (
-              <table>
-                <thead><tr><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
-                <tbody>
-                  {esperando.map((f) => (
-                    <Fragment key={f.id}>
-                      <tr>
-                        <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td><td>{f.delegacion}</td>
-                        <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                        <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
-                        <td>{f.dias > 15 ? <span className="tag" style={{ background: 'var(--red-soft)', color: 'var(--red)' }}>{f.dias}d</span> : <span className="muted">{f.dias}d</span>}</td>
-                        <td>
-                          <button className="btn btn-ghost btn-sm" onClick={() => comentarioFacturaId === f.id ? cerrarComentarios() : abrirComentarios(f.id)}>
-                            💬 {f.comentarios_count > 0 ? f.comentarios_count : ''}
-                          </button>
-                        </td>
-                      </tr>
-                      {comentarioFacturaId === f.id && (
-                        <tr>
-                          <td colSpan={6} style={{ background: 'var(--bg-soft, #f7f8fa)', padding: 16 }}>
-                            <div className="row-inline">
-                              <input
-                                placeholder="Ej. Gestor indica falta firma en el comprobante, se reenvía 10/07"
-                                value={comentarioTexto}
-                                onChange={(e) => setComentarioTexto(e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') guardarComentario(); }}
-                                autoFocus
-                              />
-                              <button className="btn btn-primary btn-sm" onClick={guardarComentario} disabled={comentarioGuardando}>
-                                {comentarioGuardando ? 'Guardando…' : 'Agregar'}
-                              </button>
-                              <button className="btn btn-ghost btn-sm" onClick={cerrarComentarios}>Cerrar</button>
-                            </div>
-                            {comentarioCargando ? <p className="muted">Cargando…</p> : (
-                              comentarios.length === 0 ? <p className="muted">Sin comentarios todavía.</p> : (
-                                <div style={{ marginTop: 10 }}>
-                                  {comentarios.map((c) => (
-                                    <div key={c.id} style={{ padding: '8px 0', borderTop: '1px solid var(--border, #e5e7eb)' }}>
-                                      <div className="muted" style={{ fontSize: 12 }}>{new Date(c.fecha).toLocaleString('es-MX')}</div>
-                                      <div>{c.comentario}</div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
+              agruparPor === 'ninguno' ? (
+                <table>
+                  <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
+                  <tbody>{esperando.map((f) => filaEsperando(f))}</tbody>
+                </table>
+              ) : (
+                gruposEsperando.map(([nombreGrupo, filas]) => (
+                  <details key={nombreGrupo} open style={{ marginBottom: 10 }}>
+                    <summary style={{ cursor: 'pointer', fontWeight: 600, padding: '8px 0', color: 'var(--navy)' }}>
+                      {nombreGrupo || '(sin dato)'} — {filas.length} factura{filas.length !== 1 ? 's' : ''}
+                    </summary>
+                    <table>
+                      <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
+                      <tbody>{filas.map((f) => filaEsperando(f))}</tbody>
+                    </table>
+                  </details>
+                ))
+              )
             )}
           </div>
 
@@ -1101,27 +1167,6 @@ async function cruzarCon5005() {
                 <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas a gestor</button>
                 <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
-              </div>
-            )}
-            {comprobantePanelAbierto && (
-              <div className="card" style={{ border: '2px solid var(--green)', margin: '12px 0' }}>
-                <h2>Adjuntar comprobante de contra recibo</h2>
-                <p className="muted" style={{ marginBottom: 12 }}>
-                  Esto marca las {seleccionados.size} facturas seleccionadas como <b>Con CR</b> de inmediato — no espera al Cruce 5005.
-                </p>
-                <div className="field" style={{ marginBottom: 12 }}>
-                  <label>Archivo del comprobante (foto o escaneo)</label>
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setComprobanteArchivo(e.target.files[0] || null)} />
-                </div>
-                <div className="field" style={{ maxWidth: 260, marginBottom: 12 }}>
-                  <label>Número de comprobante (opcional)</label>
-                  <input value={comprobanteNumero} onChange={(e) => setComprobanteNumero(e.target.value)} placeholder="Si lo tienes a la mano" />
-                </div>
-                {comprobanteMensaje && <div className="alert error">{comprobanteMensaje}</div>}
-                <button className="btn btn-primary" onClick={subirComprobante} disabled={comprobanteSubiendo || !comprobanteArchivo}>
-                  {comprobanteSubiendo ? 'Subiendo…' : 'Guardar y marcar Con CR'}
-                </button>{' '}
-                <button className="btn btn-ghost" onClick={() => setComprobantePanelAbierto(false)}>Cancelar</button>
               </div>
             )}
             {gCargando ? <p className="muted">Cargando…</p> : (
