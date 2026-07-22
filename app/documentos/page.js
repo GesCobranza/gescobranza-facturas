@@ -90,9 +90,15 @@ function DocumentosInterior() {
   }
 
   async function descargar(id) {
+    const ventana = window.open('', '_blank');
     const res = await fetch('/api/documentos/descargar?id=' + id);
     const data = await res.json();
-    if (data.ok) window.open(data.url, '_blank');
+    if (data.ok && ventana) {
+      ventana.location.href = data.url;
+    } else if (ventana) {
+      ventana.close();
+      alert('No se pudo generar la descarga: ' + (data.error || 'error desconocido'));
+    }
   }
 
   function empezarEdicion(doc) {
