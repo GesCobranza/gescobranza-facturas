@@ -112,7 +112,10 @@ function DocumentosInterior() {
   }
 
   async function eliminarDocumento(id, nombre) {
-    if (!window.confirm(`¿Eliminar "${nombre}"? Esto borra el archivo por completo y no se puede deshacer.`)) return;
+    const confirmado = window.confirm(
+      `⚠ ¿ESTÁS SÚPER SEGURO de eliminar este PDF?\n\n"${nombre}"\n\nEsta acción NO se puede deshacer — el archivo se borra por completo. Confirma que es el documento correcto antes de continuar.`
+    );
+    if (!confirmado) return;
     const res = await fetch('/api/documentos?id=' + id, { method: 'DELETE' });
     const data = await res.json();
     if (data.ok) {
