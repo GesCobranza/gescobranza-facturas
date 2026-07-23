@@ -104,6 +104,9 @@ export default function Home() {
   const [cargandoCruce, setCargandoCruce] = useState(false);
   const [auditoriaResultado, setAuditoriaResultado] = useState(null);
   const [cargandoAuditoria, setCargandoAuditoria] = useState(false);
+  const [diagAltaInput, setDiagAltaInput] = useState('');
+  const [diagResultado, setDiagResultado] = useState(null);
+  const [diagCargando, setDiagCargando] = useState(false);
 
   useEffect(() => { cargarCatalogos(); }, []);
 
@@ -653,6 +656,21 @@ async function cruzarCon5005() {
       setAuditoriaResultado({ ok: false, error: err.message });
     } finally {
       setCargandoAuditoria(false);
+    }
+  }
+
+  async function buscarDiagnostico() {
+    if (!diagAltaInput.trim()) return;
+    setDiagCargando(true);
+    setDiagResultado(null);
+    try {
+      const res = await fetch('/api/diagnostico5005?alta=' + encodeURIComponent(diagAltaInput.trim()));
+      const data = await res.json();
+      setDiagResultado(data);
+    } catch (err) {
+      setDiagResultado({ ok: false, error: err.message });
+    } finally {
+      setDiagCargando(false);
     }
   }
 
@@ -1411,6 +1429,76 @@ async function cruzarCon5005() {
                     </tbody>
                   </table>
                 )}
+              </>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>4. Diagnóstico — comparar una alta específica</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Escribe una alta que sepas que debería tener CR y no lo tiene. Te muestro exactamente lo que tiene guardado
+              tu sistema y todas las altas que trae el 5005 cargado para ese mismo proveedor, para ver a simple vista si
+              hay una diferencia de escritura.
+            </p>
+            <div className="row-inline" style={{ marginBottom: 12 }}>
+              <input
+                value={diagAltaInput}
+                onChange={(e) => setDiagAltaInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') buscarDiagnostico(); }}
+                placeholder="Ej. 018001-106297"
+                style={{ maxWidth: 260 }}
+              />
+              <button className="btn btn-primary btn-sm" onClick={buscarDiagnostico} disabled={diagCargando}>
+                {diagCargando ? 'Buscando…' : 'Buscar'}
+              </button>
+            </div>
+
+            {diagResultado && !diagResultado.ok && (
+              <p className="muted" style={{ color: 'var(--red)' }}>{diagResultado.error}</p>
+            )}
+
+            {diagResultado && diagResultado.ok && (
+              <>
+                <div className="card" style={{ background: 'var(--bg)', marginBottom: 12 }}>
+                  <p style={{ margin: '4px 0' }}><b>Guardado en tu sistema:</b></p>
+                  <p style={{ margin: '4px 0' }}>Alta: <code>{diagResultado.factura.alta}</code></p>
+                  <p style={{ margin: '4px 0' }}>Proveedor: <code>{diagResultado.factura.prov_no}</code> (normalizado: {diagResultado.factura.prov_no_normalizado})</p>
+                  <p style={{ margin: '4px 0' }}>Importe: ${Number(diagResultado.factura.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
+                  <p style={{ margin: '4px 0' }}>CR: {diagResultado.factura.tiene_cr ? 'Sí' : 'No'} · Alerta: {diagResultado.factura.alerta_importe || '—'}</p>
+                </div>
+
+                {diagResultado.coincidenciaExactaAlta.length > 0 ? (
+                  <div className="alert error" style={{ marginBottom: 12 }}>
+                    <b>Sí hay {diagResultado.coincidenciaExactaAlta.length} fila(s) con la misma alta (ignorando mayúsculas) para este proveedor en el 5005 cargado</b>, pero el cruce no la tomó — esto apunta a un problema en la lógica del cruce, no en los datos. Compara los códigos de caracteres abajo, puede haber un espacio invisible u otro carácter oculto:
+                    {diagResultado.coincidenciaExactaAlta.map((c, i) => (
+                      <div key={i} style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 11 }}>
+                        5005 alta: "{c.alta}" · comprobante: {c.comprobante} · importe: ${c.importe}<br />
+                        Códigos de caracteres (5005): [{c.alta_bytes.join(', ')}]<br />
+                        Códigos de caracteres (tu sistema): [{diagResultado.factura.alta_bytes.join(', ')}]
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted" style={{ marginBottom: 12 }}>
+                    No hay ninguna fila con esta alta exacta para este proveedor en el 5005 cargado — el problema no es de formato invisible, la alta simplemente no está en el archivo que subiste (o está bajo un proveedor distinto).
+                  </p>
+                )}
+
+                <p className="muted">
+                  Este proveedor tiene {diagResultado.totalFilasProveedorEn5005} filas en el 5005 cargado. Muestra de hasta 30 altas registradas para él:
+                </p>
+                <table>
+                  <thead><tr><th>Alta en 5005</th><th>Proveedor en 5005</th><th>Importe</th><th>Comprobante</th></tr></thead>
+                  <tbody>
+                    {diagResultado.muestraAltasDelProveedor.map((r, i) => (
+                      <tr key={i}>
+                        <td>{r.alta}</td><td>{r.proveedor}</td>
+                        <td>${Number(r.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                        <td>{r.comprobante || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </>
             )}
           </div>
