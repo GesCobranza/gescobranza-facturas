@@ -41,7 +41,11 @@ export async function POST() {
     if (!r.alta || !r.proveedor) return;
     const key = String(r.alta).trim() + '|' + normalizarProveedor(r.proveedor);
     if (!mapa[key]) mapa[key] = [];
-    mapa[key].push({ importe: Number(r.importe) || 0, comprobante: r.comprobante ? String(r.comprobante).trim() : '' });
+    const candidato = { importe: Number(r.importe) || 0, comprobante: r.comprobante ? String(r.comprobante).trim() : '' };
+    // Si ya existe un candidato idéntico (mismo importe y comprobante) para esta clave, no lo duplica —
+    // el propio 5005 a veces trae la misma transacción repetida con el proveedor en distinto formato.
+    const yaExiste = mapa[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
+    if (!yaExiste) mapa[key].push(candidato);
   });
 
   let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0;
