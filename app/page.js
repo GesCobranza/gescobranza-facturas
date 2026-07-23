@@ -102,6 +102,8 @@ export default function Home() {
   const [raw5005Mensaje, setRaw5005Mensaje] = useState('');
   const [cruceMensaje, setCruceMensaje] = useState('');
   const [cargandoCruce, setCargandoCruce] = useState(false);
+  const [auditoriaResultado, setAuditoriaResultado] = useState(null);
+  const [cargandoAuditoria, setCargandoAuditoria] = useState(false);
 
   useEffect(() => { cargarCatalogos(); }, []);
 
@@ -539,7 +541,7 @@ export default function Home() {
   }
 
   // ---- Cruce 5005: acciones ----
- async function cargarArchivo5005() {
+  async function cargarArchivo5005() {
     if (!raw5005Files || raw5005Files.length === 0) {
       setRaw5005Mensaje('Selecciona primero el archivo (o archivos) del 5005.');
       return;
@@ -555,6 +557,7 @@ export default function Home() {
         const hoja = wb.Sheets[wb.SheetNames[0]];
         const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
 
+        // Busca automáticamente en qué fila están los encabezados y en qué columna está cada dato
         let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
         for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
           const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
@@ -621,7 +624,7 @@ async function cruzarCon5005() {
       const res = await fetch('/api/cruce5005', { method: 'POST' });
       const data = await res.json();
       if (data.ok) {
-        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
+        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.corregidos} corregidos (ya tenían CR y se les actualizó comprobante/importe), ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
       } else {
         setCruceMensaje(`Error: ${data.error}`);
       }
@@ -629,6 +632,24 @@ async function cruzarCon5005() {
       setCruceMensaje('Error de conexión: ' + err.message);
     } finally {
       setCargandoCruce(false);
+    }
+  }
+
+  async function auditarCon5005() {
+    setCargandoAuditoria(true);
+    setAuditoriaResultado(null);
+    try {
+      const res = await fetch('/api/auditar5005', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        setAuditoriaResultado(data);
+      } else {
+        setAuditoriaResultado({ ok: false, error: data.error });
+      }
+    } catch (err) {
+      setAuditoriaResultado({ ok: false, error: err.message });
+    } finally {
+      setCargandoAuditoria(false);
     }
   }
 
@@ -1313,7 +1334,7 @@ async function cruzarCon5005() {
               (Proveedor, Num Ent Alm, Importe, Comprobante). Ya no hace falta unificarlos tú antes de subirlos:
               juntos reemplazan por completo lo que tenías cargado.
             </p>
-           <input
+            <input
               type="file"
               accept=".xlsx,.xls,.csv"
               multiple
@@ -1338,6 +1359,57 @@ async function cruzarCon5005() {
               {cargandoCruce ? 'Cruzando…' : 'Cruzar con 5005'}
             </button>
             {cruceMensaje && <p className="muted" style={{ marginTop: 10 }}>{cruceMensaje}</p>}
+          </div>
+
+          <div className="card">
+            <h2>3. Auditar facturas que ya tienen CR</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>
+              Compara las facturas <b>ya marcadas Con CR</b> contra el 5005 que acabas de cargar, para confirmar que el
+              comprobante y el importe guardados siguen coincidiendo. <b>No corrige nada automáticamente</b> — solo te
+              muestra las diferencias para que tú decidas caso por caso en Consulta.
+            </p>
+            <button className="btn btn-primary" onClick={auditarCon5005} disabled={cargandoAuditoria}>
+              {cargandoAuditoria ? 'Auditando…' : 'Auditar facturas Con CR'}
+            </button>
+
+            {auditoriaResultado && !auditoriaResultado.ok && (
+              <p className="muted" style={{ marginTop: 10, color: 'var(--red)' }}>Error: {auditoriaResultado.error}</p>
+            )}
+
+            {auditoriaResultado && auditoriaResultado.ok && (
+              <>
+                <p className="muted" style={{ marginTop: 10 }}>
+                  {auditoriaResultado.totalAuditadas} facturas Con CR auditadas · {auditoriaResultado.coinciden} coinciden ·{' '}
+                  {auditoriaResultado.sinCandidato} sin esa alta en el 5005 cargado (normal si ese proveedor no viene en el archivo) ·{' '}
+                  <b>{auditoriaResultado.discrepancias.length} con diferencias</b>
+                </p>
+                {auditoriaResultado.discrepancias.length > 0 && (
+                  <table style={{ marginTop: 12 }}>
+                    <thead>
+                      <tr>
+                        <th>Alta</th><th>Grupo</th><th>Empresa</th>
+                        <th>Comprobante guardado</th><th>Importe guardado</th>
+                        <th>Lo que dice el 5005 cargado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {auditoriaResultado.discrepancias.map((d) => (
+                        <tr key={d.id}>
+                          <td>{d.alta}</td><td>{d.grupo}</td><td>{d.empresa}</td>
+                          <td>{d.comprobanteGuardado || '—'}</td>
+                          <td>${Number(d.importeGuardado).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
+                          <td>
+                            {d.candidatos5005.map((c, i) => (
+                              <div key={i}>Comprobante {c.comprobante} · ${Number(c.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                            ))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            )}
           </div>
         </>
       )}
