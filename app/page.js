@@ -1304,9 +1304,10 @@ async function cruzarCon5005() {
           <div className="card">
             <h2>1. Cargar el reporte 5005</h2>
             <p className="muted" style={{ marginBottom: 12 }}>
-              Sube tu archivo del 5005 completo, tal cual lo recibes (Excel) — el sistema encuentra solo las columnas que
-              necesita (Proveedor, Num Ent Alm, Importe, Comprobante), sin importar cuántas más traiga el archivo.
-              Cada archivo nuevo reemplaza al anterior completo.
+              Sube los archivos del 5005 tal cual te los entrega el IMSS — puedes seleccionar varios a la vez (Ctrl+clic
+              o Ctrl+A en el explorador). El sistema encuentra solo las columnas que necesita en cada uno
+              (Proveedor, Num Ent Alm, Importe, Comprobante). Ya no hace falta unificarlos tú antes de subirlos:
+              juntos reemplazan por completo lo que tenías cargado.
             </p>
            <input
               type="file"
