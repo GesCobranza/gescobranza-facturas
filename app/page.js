@@ -624,7 +624,7 @@ async function cruzarCon5005() {
       const res = await fetch('/api/cruce5005', { method: 'POST' });
       const data = await res.json();
       if (data.ok) {
-        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.corregidos} corregidos (ya tenían CR y se les actualizó comprobante/importe), ${data.alertasImporte} alertas de importe, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
+        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.corregidos} corregidos (ya tenían CR y se les actualizó comprobante/importe), ${data.alertasLimpiadas} alertas de importe viejas limpiadas, ${data.alertasImporte} alertas de importe nuevas/vigentes, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.`);
       } else {
         setCruceMensaje(`Error: ${data.error}`);
       }
