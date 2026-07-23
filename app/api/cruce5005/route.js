@@ -21,6 +21,12 @@ function normalizarProveedor(valor) {
   const limpio = String(valor || '').trim().replace(/^0+/, '');
   return limpio || '0';
 }
+// Normaliza la alta para que diferencias de formato (mayúsculas/minúsculas, espacios de más,
+// espacios invisibles al inicio/fin o en medio) no bloqueen un match real. No toca guiones
+// ni dígitos — solo limpia espacios y unifica mayúsculas.
+function normalizarAlta(valor) {
+  return String(valor || '').trim().toUpperCase().replace(/\s+/g, '');
+}
 export async function POST() {
   const supabase = getSupabaseAdmin();
   let raw, facturas;
@@ -35,7 +41,7 @@ export async function POST() {
     if (!r.alta || !r.proveedor) return;
     const comprobante = r.comprobante ? String(r.comprobante).trim() : '';
     if (!comprobante) return;
-    const key = String(r.alta).trim() + '|' + normalizarProveedor(r.proveedor);
+    const key = normalizarAlta(r.alta) + '|' + normalizarProveedor(r.proveedor);
     if (!mapa[key]) mapa[key] = [];
     const candidato = { importe: Number(r.importe) || 0, comprobante };
     const yaExiste = mapa[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
@@ -53,9 +59,9 @@ export async function POST() {
       }
       continue;
     }
-    const key = String(f.alta).trim() + '|' + normalizarProveedor(f.prov_no);
+    const key = normalizarAlta(f.alta) + '|' + normalizarProveedor(f.prov_no);
     const candidatos = mapa[key];
-    if (!candidatos || candidatos.length === 0) continue; // sin candidato: no se toca, se queda como estaba (Con o Sin CR, y su alerta previa se conserva)
+    if (!candidatos || candidatos.length === 0) continue; // sin candidato: no se toca, se queda como estaba
     const importeCapturado = Number(f.importe);
     const comprobanteGuardado = f.comprobante ? String(f.comprobante).trim() : '';
     const exacto = candidatos.find((c) => Math.abs(c.importe - importeCapturado) < 0.01 && c.comprobante);
@@ -83,7 +89,6 @@ export async function POST() {
         alertasImporte++;
         cambia = true;
       } else if (f.alerta_importe) {
-        // El importe ya coincide ahora — si tenía una alerta de importe vieja, se limpia.
         upd.alerta_importe = null;
         alertasLimpiadas++;
         cambia = true;
@@ -106,10 +111,6 @@ export async function POST() {
     );
   }
 
-  // Conteo real, después de aplicar todas las actualizaciones de esta corrida: cuántas facturas
-  // tienen HOY alerta_importe activa en TODA la base — este es el número que debe coincidir con
-  // el filtro "Solo con observaciones" de Consulta. Se hace aparte porque los contadores de arriba
-  // (alertasImporte, ambiguos, etc.) solo reflejan lo que se tocó EN ESTA corrida, no el total histórico.
   let totalConAlertaActual = null;
   try {
     const { count, error: errCount } = await supabase
@@ -118,7 +119,7 @@ export async function POST() {
       .not('alerta_importe', 'is', null);
     if (!errCount) totalConAlertaActual = count;
   } catch (err) {
-    totalConAlertaActual = null; // si falla el conteo, no bloquea el resultado del cruce
+    totalConAlertaActual = null;
   }
 
   return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos, alertasLimpiadas, totalConAlertaActual });
