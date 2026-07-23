@@ -539,74 +539,78 @@ export default function Home() {
   }
 
   // ---- Cruce 5005: acciones ----
-  async function cargarArchivo5005() {
-    if (!raw5005File) {
-      setRaw5005Mensaje('Selecciona primero el archivo del 5005.');
+ async function cargarArchivo5005() {
+    if (!raw5005Files || raw5005Files.length === 0) {
+      setRaw5005Mensaje('Selecciona primero el archivo (o archivos) del 5005.');
       return;
     }
-    setRaw5005Mensaje('Leyendo archivo…');
+    let totalCargadas = 0;
+    let primerBloqueGlobal = true; // solo se borra la tabla una vez, en el primer bloque del primer archivo de toda la selección
     try {
-      const buffer = await raw5005File.arrayBuffer();
-      const wb = XLSX.read(buffer, { type: 'array' });
-      const hoja = wb.Sheets[wb.SheetNames[0]];
-      const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
+      for (let f = 0; f < raw5005Files.length; f++) {
+        const archivo = raw5005Files[f];
+        setRaw5005Mensaje(`Leyendo archivo ${f + 1} de ${raw5005Files.length}: ${archivo.name}…`);
+        const buffer = await archivo.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const hoja = wb.Sheets[wb.SheetNames[0]];
+        const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
 
-      // Busca automáticamente en qué fila están los encabezados y en qué columna está cada dato
-      let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
-      for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
-        const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
-        const p = fila.findIndex((c) => c.includes('proveedor'));
-        const a = fila.findIndex((c) => c.includes('ent alm') || c === 'alta');
-        const imp = fila.findIndex((c) => c.includes('importe'));
-        const comp = fila.findIndex((c) => c.includes('comprobante'));
-        if (p > -1 && a > -1 && imp > -1 && comp > -1) {
-          idxHeader = i; colProv = p; colAlta = a; colImporte = imp; colComp = comp;
-          break;
+        let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
+        for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
+          const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
+          const p = fila.findIndex((c) => c.includes('proveedor'));
+          const a = fila.findIndex((c) => c.includes('ent alm') || c === 'alta');
+          const imp = fila.findIndex((c) => c.includes('importe'));
+          const comp = fila.findIndex((c) => c.includes('comprobante'));
+          if (p > -1 && a > -1 && imp > -1 && comp > -1) {
+            idxHeader = i; colProv = p; colAlta = a; colImporte = imp; colComp = comp;
+            break;
+          }
+        }
+        if (idxHeader === -1) {
+          setRaw5005Mensaje(`⚠ El archivo "${archivo.name}" no tiene las columnas esperadas — se omitió. Cargadas hasta ahora: ${totalCargadas} filas.`);
+          continue;
+        }
+
+        const filas = [];
+        for (let i = idxHeader + 1; i < filasCrudas.length; i++) {
+          const fila = filasCrudas[i];
+          const proveedor = String(fila[colProv] || '').trim();
+          const alta = String(fila[colAlta] || '').trim();
+          const importeNum = parseFloat(String(fila[colImporte]).replace(/[^0-9.\-]/g, ''));
+          const comprobante = String(fila[colComp] || '').trim();
+          if (!alta || !proveedor || isNaN(importeNum)) continue;
+          filas.push({ proveedor, alta, importe: importeNum, comprobante });
+        }
+
+        if (filas.length === 0) {
+          setRaw5005Mensaje(`⚠ El archivo "${archivo.name}" no tiene filas de datos válidas — se omitió. Cargadas hasta ahora: ${totalCargadas} filas.`);
+          continue;
+        }
+
+        const TAMANO_BLOQUE = 2000;
+        const bloques = [];
+        for (let i = 0; i < filas.length; i += TAMANO_BLOQUE) bloques.push(filas.slice(i, i + TAMANO_BLOQUE));
+
+        for (let b = 0; b < bloques.length; b++) {
+          setRaw5005Mensaje(`Archivo ${f + 1} de ${raw5005Files.length} (${archivo.name}) — bloque ${b + 1} de ${bloques.length}… (${totalCargadas} filas cargadas hasta ahora)`);
+          const res = await fetch('/api/raw5005', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filas: bloques[b], primerBloque: primerBloqueGlobal }),
+          });
+          const data = await res.json();
+          if (!data.ok) {
+            setRaw5005Mensaje(`Error en "${archivo.name}", bloque ${b + 1}: ${data.error}. Se cargaron ${totalCargadas} filas antes del error.`);
+            return;
+          }
+          totalCargadas += data.cargadas;
+          primerBloqueGlobal = false;
         }
       }
-      if (idxHeader === -1) {
-        setRaw5005Mensaje('No encontré las columnas esperadas (Proveedor, Num Ent Alm, Importe, Comprobante) en las primeras filas del archivo — revisa que sea el reporte 5005 correcto.');
-        return;
-      }
-
-      const filas = [];
-      for (let i = idxHeader + 1; i < filasCrudas.length; i++) {
-        const fila = filasCrudas[i];
-        const proveedor = String(fila[colProv] || '').trim();
-        const alta = String(fila[colAlta] || '').trim();
-        const importeNum = parseFloat(String(fila[colImporte]).replace(/[^0-9.\-]/g, ''));
-        const comprobante = String(fila[colComp] || '').trim();
-        if (!alta || !proveedor || isNaN(importeNum)) continue;
-        filas.push({ proveedor, alta, importe: importeNum, comprobante });
-      }
-
-      if (filas.length === 0) {
-        setRaw5005Mensaje('No se detectaron filas de datos válidas en el archivo.');
-        return;
-      }
-
-     const TAMANO_BLOQUE = 2000;
-      const bloques = [];
-      for (let i = 0; i < filas.length; i += TAMANO_BLOQUE) bloques.push(filas.slice(i, i + TAMANO_BLOQUE));
-
-      let totalCargadas = 0;
-      for (let i = 0; i < bloques.length; i++) {
-        setRaw5005Mensaje(`Subiendo bloque ${i + 1} de ${bloques.length} (${filas.length} filas en total)…`);
-        const res = await fetch('/api/raw5005', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filas: bloques[i], primerBloque: i === 0 }),
-        });
-        const data = await res.json();
-        if (!data.ok) {
-          setRaw5005Mensaje(`Error en el bloque ${i + 1}: ${data.error}. Se cargaron ${totalCargadas} filas antes del error.`);
-          return;
-        }
-        totalCargadas += data.cargadas;
-      }
-      setRaw5005Mensaje(`✓ Archivo cargado: ${totalCargadas} filas del 5005. Ya puedes cruzar.`);
+      setRaw5005Mensaje(`✓ Carga terminada: ${totalCargadas} filas de ${raw5005Files.length} archivo(s). Ya puedes cruzar.`);
     } catch (err) {
-      setRaw5005Mensaje('Error leyendo el archivo: ' + err.message);
+      setRaw5005Mensaje('Error leyendo los archivos: ' + err.message);
     }
   }
 
