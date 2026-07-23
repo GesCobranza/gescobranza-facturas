@@ -98,7 +98,7 @@ export default function Home() {
   const [comentarioGuardando, setComentarioGuardando] = useState(false);
 
   // ---- Cruce 5005 ----
-  const [raw5005File, setRaw5005File] = useState(null);
+  const [raw5005Files, setRaw5005Files] = useState([]);
   const [raw5005Mensaje, setRaw5005Mensaje] = useState('');
   const [cruceMensaje, setCruceMensaje] = useState('');
   const [cargandoCruce, setCargandoCruce] = useState(false);
