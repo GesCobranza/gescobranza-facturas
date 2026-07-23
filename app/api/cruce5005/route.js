@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
-
 export const maxDuration = 60;
-
 async function traerTodas(supabase, tabla, filtro) {
   const PAGINA = 1000;
   let desde = 0;
@@ -19,15 +17,12 @@ async function traerTodas(supabase, tabla, filtro) {
   }
   return todas;
 }
-
 function normalizarProveedor(valor) {
   const limpio = String(valor || '').trim().replace(/^0+/, '');
   return limpio || '0';
 }
-
 export async function POST() {
   const supabase = getSupabaseAdmin();
-
   let raw, facturas;
   try {
     raw = await traerTodas(supabase, 'raw_5005');
@@ -35,22 +30,25 @@ export async function POST() {
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message });
   }
-
   const mapa = {};
   raw.forEach((r) => {
     if (!r.alta || !r.proveedor) return;
+    const comprobante = r.comprobante ? String(r.comprobante).trim() : '';
+    // Una fila sin comprobante todavía no tiene CR asignado por el IMSS — nunca puede ser un match válido,
+    // así que no debe entrar al pool de candidatos. Sin este filtro, esa fila "pendiente" compite como
+    // candidato falso contra la fila real que sí trae el comprobante, y el cruce la manda a revisión
+    // manual como si fuera ambigüedad genuina cuando en realidad es el mismo trámite en dos etapas.
+    if (!comprobante) return;
     const key = String(r.alta).trim() + '|' + normalizarProveedor(r.proveedor);
     if (!mapa[key]) mapa[key] = [];
-    const candidato = { importe: Number(r.importe) || 0, comprobante: r.comprobante ? String(r.comprobante).trim() : '' };
+    const candidato = { importe: Number(r.importe) || 0, comprobante };
     // Si ya existe un candidato idéntico (mismo importe y comprobante) para esta clave, no lo duplica —
     // el propio 5005 a veces trae la misma transacción repetida con el proveedor en distinto formato.
     const yaExiste = mapa[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
     if (!yaExiste) mapa[key].push(candidato);
   });
-
   let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0;
   const actualizaciones = [];
-
   for (const f of facturas) {
     if (!f.alta || !f.prov_no || !f.importe || Number(f.importe) <= 0) {
       incompletos++;
@@ -60,10 +58,8 @@ export async function POST() {
     const key = String(f.alta).trim() + '|' + normalizarProveedor(f.prov_no);
     const candidatos = mapa[key];
     if (!candidatos || candidatos.length === 0) continue;
-
     const importeCapturado = Number(f.importe);
     const exacto = candidatos.find((c) => Math.abs(c.importe - importeCapturado) < 0.01 && c.comprobante);
-
     if (exacto) {
       actualizaciones.push({ id: f.id, tiene_cr: true, fecha_cr: new Date().toISOString(), comprobante: exacto.comprobante, alerta_importe: null });
       encontrados++;
@@ -86,7 +82,6 @@ export async function POST() {
       ambiguos++;
     }
   }
-
   const TAMANO_BLOQUE = 200;
   for (let i = 0; i < actualizaciones.length; i += TAMANO_BLOQUE) {
     const bloque = actualizaciones.slice(i, i + TAMANO_BLOQUE);
@@ -97,6 +92,5 @@ export async function POST() {
       })
     );
   }
-
   return NextResponse.json({ ok: true, encontrados, alertasImporte, ambiguos, incompletos });
 }
