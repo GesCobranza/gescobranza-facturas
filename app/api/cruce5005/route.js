@@ -26,12 +26,6 @@ export async function POST() {
   let raw, facturas;
   try {
     raw = await traerTodas(supabase, 'raw_5005');
-    // Se quitó el filtro .eq('tiene_cr', false): por decisión explícita de Gabriel, el cruce ahora
-    // reevalúa TODAS las facturas contra cada carga nueva del 5005, incluyendo las que ya tienen CR.
-    // Esto permite corregir CR mal asignados en cargas anteriores (por ejemplo, alta reutilizada entre
-    // proveedores distintos). El riesgo aceptado: si una factura ya tenía CR asignado a mano y el 5005
-    // trae un comprobante distinto para esa misma Alta+Proveedor, el nuevo valor institucional sobrescribe
-    // al manual.
     facturas = await traerTodas(supabase, 'facturas');
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message });
@@ -40,8 +34,6 @@ export async function POST() {
   raw.forEach((r) => {
     if (!r.alta || !r.proveedor) return;
     const comprobante = r.comprobante ? String(r.comprobante).trim() : '';
-    // Una fila sin comprobante todavía no tiene CR asignado por el IMSS — nunca puede ser un match válido,
-    // así que no debe entrar al pool de candidatos.
     if (!comprobante) return;
     const key = String(r.alta).trim() + '|' + normalizarProveedor(r.proveedor);
     if (!mapa[key]) mapa[key] = [];
@@ -49,28 +41,30 @@ export async function POST() {
     const yaExiste = mapa[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
     if (!yaExiste) mapa[key].push(candidato);
   });
-  let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0, corregidos = 0;
+  let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0, corregidos = 0, alertasLimpiadas = 0;
   const actualizaciones = [];
   for (const f of facturas) {
     if (!f.alta || !f.prov_no || !f.importe || Number(f.importe) <= 0) {
-      if (!f.tiene_cr) {
+      if (!f.tiene_cr && f.alerta_importe !== 'Falta Alta, Proveedor o Importe — no se pudo cruzar contra el 5005') {
         incompletos++;
         actualizaciones.push({ id: f.id, alerta_importe: 'Falta Alta, Proveedor o Importe — no se pudo cruzar contra el 5005' });
+      } else if (!f.tiene_cr) {
+        incompletos++;
       }
       continue;
     }
     const key = String(f.alta).trim() + '|' + normalizarProveedor(f.prov_no);
     const candidatos = mapa[key];
-    if (!candidatos || candidatos.length === 0) continue; // sin candidato: no se toca, se queda como estaba (Con o Sin CR)
+    if (!candidatos || candidatos.length === 0) continue; // sin candidato: no se toca, se queda como estaba (Con o Sin CR, y su alerta previa se conserva)
     const importeCapturado = Number(f.importe);
     const comprobanteGuardado = f.comprobante ? String(f.comprobante).trim() : '';
     const exacto = candidatos.find((c) => Math.abs(c.importe - importeCapturado) < 0.01 && c.comprobante);
     if (exacto) {
-      // Si ya estaba exactamente así, no se reescribe (evita mover fecha_cr sin necesidad)
-      const yaEstabaIgual = f.tiene_cr && comprobanteGuardado === exacto.comprobante && Math.abs(importeCapturado - exacto.importe) < 0.01;
+      const yaEstabaIgual = f.tiene_cr && comprobanteGuardado === exacto.comprobante && Math.abs(importeCapturado - exacto.importe) < 0.01 && !f.alerta_importe;
       if (!yaEstabaIgual) {
         actualizaciones.push({ id: f.id, tiene_cr: true, fecha_cr: new Date().toISOString(), comprobante: exacto.comprobante, alerta_importe: null });
         if (f.tiene_cr) corregidos++; else encontrados++;
+        if (f.alerta_importe) alertasLimpiadas++;
       }
     } else if (candidatos.length === 1) {
       const unico = candidatos[0];
@@ -83,16 +77,21 @@ export async function POST() {
         if (f.tiene_cr) corregidos++; else encontrados++;
         cambia = true;
       }
-      if (Math.abs(unico.importe - importeCapturado) >= 0.01) {
+      const importeCoincide = Math.abs(unico.importe - importeCapturado) < 0.01;
+      if (!importeCoincide) {
         upd.alerta_importe = `5005 registra $${unico.importe} vs $${importeCapturado} capturado — corrige el importe`;
         alertasImporte++;
+        cambia = true;
+      } else if (f.alerta_importe) {
+        // El importe ya coincide ahora — si tenía una alerta de importe vieja, se limpia.
+        upd.alerta_importe = null;
+        alertasLimpiadas++;
         cambia = true;
       }
       if (cambia) actualizaciones.push(upd);
     } else if (!f.tiene_cr) {
-      // Los casos ambiguos solo se reportan para las que siguen Sin CR — para las que ya tienen CR
-      // con candidatos múltiples no se sobreescribe nada automáticamente, por seguridad.
-      actualizaciones.push({ id: f.id, alerta_importe: `Hay ${candidatos.length} registros en 5005 con esta Alta+Proveedor y ninguno coincide en importe — revisar a mano` });
+      const mensaje = `Hay ${candidatos.length} registros en 5005 con esta Alta+Proveedor y ninguno coincide en importe — revisar a mano`;
+      if (f.alerta_importe !== mensaje) actualizaciones.push({ id: f.id, alerta_importe: mensaje });
       ambiguos++;
     }
   }
@@ -106,5 +105,5 @@ export async function POST() {
       })
     );
   }
-  return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos });
+  return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos, alertasLimpiadas });
 }
