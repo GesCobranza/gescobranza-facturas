@@ -630,7 +630,7 @@ async function cruzarCon5005() {
         const totalTexto = data.totalConAlertaActual !== null && data.totalConAlertaActual !== undefined
           ? ` · Total con alerta de importe activa AHORA en toda la base: ${data.totalConAlertaActual} (este es el número que debe coincidir con "Solo con observaciones" en Consulta).`
           : '';
-        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.corregidos} corregidos (ya tenían CR y se les actualizó comprobante/importe), ${data.alertasLimpiadas} alertas de importe viejas limpiadas, ${data.alertasImporte} alertas de importe nuevas/vigentes en esta corrida, ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.${totalTexto}`);
+        setCruceMensaje(`Cruce terminado: ${data.encontrados} CR encontrados, ${data.corregidos} corregidos (ya tenían CR y se les actualizó comprobante/importe), ${data.alertasLimpiadas} alertas de importe viejas limpiadas, ${data.alertasImporte} alertas de importe nuevas/vigentes en esta corrida, ${data.pendientesImss} facturas sin CR que están en el 5005 pero el IMSS aún no les asigna comprobante (quedan Sin CR sin alerta, es su estado normal), ${data.ambiguos} casos ambiguos, ${data.incompletos} filas con datos incompletos.${totalTexto}`);
       } else {
         setCruceMensaje(`Error: ${data.error}`);
       }
