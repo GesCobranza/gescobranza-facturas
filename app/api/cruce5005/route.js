@@ -21,9 +21,6 @@ function normalizarProveedor(valor) {
   const limpio = String(valor || '').trim().replace(/^0+/, '');
   return limpio || '0';
 }
-// Normaliza la alta para que diferencias de formato (mayúsculas/minúsculas, espacios de más,
-// espacios invisibles al inicio/fin o en medio) no bloqueen un match real. No toca guiones
-// ni dígitos — solo limpia espacios y unifica mayúsculas.
 function normalizarAlta(valor) {
   return String(valor || '').trim().toUpperCase().replace(/\s+/g, '');
 }
@@ -36,18 +33,26 @@ export async function POST() {
   } catch (err) {
     return NextResponse.json({ ok: false, error: err.message });
   }
-  const mapa = {};
+
+  // mapaValidos: solo candidatos CON comprobante — los únicos que pueden confirmar un CR.
+  // clavesEnArchivo: TODAS las combinaciones Alta+Proveedor que aparecen en el 5005 cargado,
+  // tengan o no comprobante — sirve para distinguir "está en el archivo pero aún pendiente en el
+  // IMSS" de "esta alta+proveedor no viene en ningún archivo que hayas cargado".
+  const mapaValidos = {};
+  const clavesEnArchivo = new Set();
   raw.forEach((r) => {
     if (!r.alta || !r.proveedor) return;
+    const key = normalizarAlta(r.alta) + '|' + normalizarProveedor(r.proveedor);
+    clavesEnArchivo.add(key);
     const comprobante = r.comprobante ? String(r.comprobante).trim() : '';
     if (!comprobante) return;
-    const key = normalizarAlta(r.alta) + '|' + normalizarProveedor(r.proveedor);
-    if (!mapa[key]) mapa[key] = [];
+    if (!mapaValidos[key]) mapaValidos[key] = [];
     const candidato = { importe: Number(r.importe) || 0, comprobante };
-    const yaExiste = mapa[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
-    if (!yaExiste) mapa[key].push(candidato);
+    const yaExiste = mapaValidos[key].some((c) => Math.abs(c.importe - candidato.importe) < 0.01 && c.comprobante === candidato.comprobante);
+    if (!yaExiste) mapaValidos[key].push(candidato);
   });
-  let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0, corregidos = 0, alertasLimpiadas = 0;
+
+  let encontrados = 0, alertasImporte = 0, ambiguos = 0, incompletos = 0, corregidos = 0, alertasLimpiadas = 0, pendientesImss = 0;
   const actualizaciones = [];
   for (const f of facturas) {
     if (!f.alta || !f.prov_no || !f.importe || Number(f.importe) <= 0) {
@@ -60,8 +65,26 @@ export async function POST() {
       continue;
     }
     const key = normalizarAlta(f.alta) + '|' + normalizarProveedor(f.prov_no);
-    const candidatos = mapa[key];
-    if (!candidatos || candidatos.length === 0) continue; // sin candidato: no se toca, se queda como estaba
+    const candidatos = mapaValidos[key];
+
+    if (!candidatos || candidatos.length === 0) {
+      // No hay ningún candidato CON comprobante. Puede ser por dos razones muy distintas:
+      if (!f.tiene_cr && clavesEnArchivo.has(key)) {
+        // 1) SÍ está en el archivo, pero todas sus filas vienen sin comprobante — trámite pendiente
+        //    del lado del IMSS. Esto NO es una anomalía que amerite alerta: es simplemente el estado
+        //    normal "Sin CR". Si tenía una alerta vieja de una corrida anterior (por ejemplo, un
+        //    "ambiguo" que ya no aplica porque ahora sabemos que solo eran filas sin comprobante),
+        //    se limpia — pero no se escribe ningún mensaje nuevo.
+        pendientesImss++;
+        if (f.alerta_importe) {
+          actualizaciones.push({ id: f.id, alerta_importe: null });
+          alertasLimpiadas++;
+        }
+      }
+      // 2) No está en el archivo en absoluto — no se toca, se queda como estaba (comportamiento previo).
+      continue;
+    }
+
     const importeCapturado = Number(f.importe);
     const comprobanteGuardado = f.comprobante ? String(f.comprobante).trim() : '';
     const exacto = candidatos.find((c) => Math.abs(c.importe - importeCapturado) < 0.01 && c.comprobante);
@@ -100,6 +123,7 @@ export async function POST() {
       ambiguos++;
     }
   }
+
   const TAMANO_BLOQUE = 200;
   for (let i = 0; i < actualizaciones.length; i += TAMANO_BLOQUE) {
     const bloque = actualizaciones.slice(i, i + TAMANO_BLOQUE);
@@ -122,5 +146,15 @@ export async function POST() {
     totalConAlertaActual = null;
   }
 
-  return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos, alertasLimpiadas, totalConAlertaActual });
+  return NextResponse.json({
+    ok: true,
+    encontrados,
+    corregidos,
+    alertasImporte,
+    ambiguos,
+    incompletos,
+    alertasLimpiadas,
+    pendientesImss,
+    totalConAlertaActual,
+  });
 }
