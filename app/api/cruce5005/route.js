@@ -105,5 +105,21 @@ export async function POST() {
       })
     );
   }
-  return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos, alertasLimpiadas });
+
+  // Conteo real, después de aplicar todas las actualizaciones de esta corrida: cuántas facturas
+  // tienen HOY alerta_importe activa en TODA la base — este es el número que debe coincidir con
+  // el filtro "Solo con observaciones" de Consulta. Se hace aparte porque los contadores de arriba
+  // (alertasImporte, ambiguos, etc.) solo reflejan lo que se tocó EN ESTA corrida, no el total histórico.
+  let totalConAlertaActual = null;
+  try {
+    const { count, error: errCount } = await supabase
+      .from('facturas')
+      .select('id', { count: 'exact', head: true })
+      .not('alerta_importe', 'is', null);
+    if (!errCount) totalConAlertaActual = count;
+  } catch (err) {
+    totalConAlertaActual = null; // si falla el conteo, no bloquea el resultado del cruce
+  }
+
+  return NextResponse.json({ ok: true, encontrados, corregidos, alertasImporte, ambiguos, incompletos, alertasLimpiadas, totalConAlertaActual });
 }
