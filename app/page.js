@@ -1308,11 +1308,15 @@ async function cruzarCon5005() {
               necesita (Proveedor, Num Ent Alm, Importe, Comprobante), sin importar cuántas más traiga el archivo.
               Cada archivo nuevo reemplaza al anterior completo.
             </p>
-            <input
+           <input
               type="file"
               accept=".xlsx,.xls,.csv"
-              onChange={(e) => setRaw5005File(e.target.files[0] || null)}
+              multiple
+              onChange={(e) => setRaw5005Files(Array.from(e.target.files || []))}
             />
+            {raw5005Files.length > 0 && (
+              <p className="muted" style={{ marginTop: 6 }}>{raw5005Files.length} archivo(s) seleccionado(s).</p>
+            )}
             <div style={{ marginTop: 12 }}>
               <button className="btn btn-primary" onClick={cargarArchivo5005}>Cargar archivo del 5005</button>
             </div>
