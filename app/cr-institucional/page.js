@@ -31,11 +31,18 @@ function aNum(v) {
   return isNaN(n) ? null : n;
 }
 
-export default function CargaCrInstitucional() {
+export default function CentroDeCargas() {
   const [archivos, setArchivos] = useState([]);
   const [vaciarAntes, setVaciarAntes] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
   const [bitacora, setBitacora] = useState([]);
+
+  // ---- Bloque 5005 ----
+  const [files5005, setFiles5005] = useState([]);
+  const [msg5005, setMsg5005] = useState('');
+  const [cruceMsg, setCruceMsg] = useState('');
+  const [cruzando, setCruzando] = useState(false);
+  const [confirmarCruce, setConfirmarCruce] = useState(false);
 
   function log(txt, tipo) {
     setBitacora((b) => [...b, { txt, tipo: tipo || 'info' }]);
@@ -187,14 +194,114 @@ export default function CargaCrInstitucional() {
     setTrabajando(false);
   }
 
+  async function cargarArchivo5005() {
+    if (!files5005 || files5005.length === 0) {
+      setMsg5005('Selecciona primero el archivo (o archivos) del 5005.');
+      return;
+    }
+    let totalCargadas = 0;
+    let primerBloqueGlobal = true;
+    try {
+      for (let f = 0; f < files5005.length; f++) {
+        const archivo = files5005[f];
+        setMsg5005('Leyendo archivo ' + (f + 1) + ' de ' + files5005.length + ': ' + archivo.name + '…');
+        const buffer = await archivo.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const hoja = wb.Sheets[wb.SheetNames[0]];
+        const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
+
+        let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
+        for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
+          const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
+          const p = fila.findIndex((c) => c.includes('proveedor'));
+          const al = fila.findIndex((c) => c.includes('ent alm') || c === 'alta');
+          const imp = fila.findIndex((c) => c.includes('importe'));
+          const comp = fila.findIndex((c) => c.includes('comprobante'));
+          if (p > -1 && al > -1 && imp > -1 && comp > -1) {
+            idxHeader = i; colProv = p; colAlta = al; colImporte = imp; colComp = comp;
+            break;
+          }
+        }
+        if (idxHeader === -1) {
+          setMsg5005('⚠ El archivo "' + archivo.name + '" no tiene las columnas esperadas — se omitió. Cargadas hasta ahora: ' + totalCargadas + ' filas.');
+          continue;
+        }
+
+        const filas = [];
+        for (let i = idxHeader + 1; i < filasCrudas.length; i++) {
+          const fila = filasCrudas[i];
+          const proveedor = String(fila[colProv] || '').trim();
+          const alta = String(fila[colAlta] || '').trim();
+          const importeNum = parseFloat(String(fila[colImporte]).replace(/[^0-9.\-]/g, ''));
+          const comprobante = String(fila[colComp] || '').trim();
+          if (!alta || !proveedor || isNaN(importeNum)) continue;
+          filas.push({ proveedor, alta, importe: importeNum, comprobante });
+        }
+
+        if (filas.length === 0) {
+          setMsg5005('⚠ El archivo "' + archivo.name + '" no tiene filas de datos válidas — se omitió. Cargadas hasta ahora: ' + totalCargadas + ' filas.');
+          continue;
+        }
+
+        const TAMANO_BLOQUE = 2000;
+        const bloques = [];
+        for (let i = 0; i < filas.length; i += TAMANO_BLOQUE) bloques.push(filas.slice(i, i + TAMANO_BLOQUE));
+
+        for (let b2 = 0; b2 < bloques.length; b2++) {
+          setMsg5005('Archivo ' + (f + 1) + ' de ' + files5005.length + ' (' + archivo.name + ') — bloque ' + (b2 + 1) + ' de ' + bloques.length + '… (' + totalCargadas + ' filas cargadas)');
+          const res = await fetch('/api/raw5005', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filas: bloques[b2], primerBloque: primerBloqueGlobal }),
+          });
+          const data = await res.json();
+          if (!data.ok) {
+            setMsg5005('Error en "' + archivo.name + '", bloque ' + (b2 + 1) + ': ' + data.error + '. Se cargaron ' + totalCargadas + ' filas antes del error.');
+            return;
+          }
+          totalCargadas += data.cargadas;
+          primerBloqueGlobal = false;
+        }
+      }
+      setMsg5005('✓ Carga terminada: ' + totalCargadas + ' filas de ' + files5005.length + ' archivo(s). Ya puedes cruzar.');
+    } catch (err) {
+      setMsg5005('Error leyendo los archivos: ' + err.message);
+    }
+  }
+
+  async function cruzarCon5005() {
+    setCruzando(true);
+    setConfirmarCruce(false);
+    setCruceMsg('Cruzando…');
+    try {
+      const res = await fetch('/api/cruce5005', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        const totalTexto = data.totalConAlertaActual !== null && data.totalConAlertaActual !== undefined
+          ? ' · Total con alerta de importe activa AHORA en toda la base: ' + data.totalConAlertaActual + ' (debe coincidir con "Solo con observaciones" en Consulta).'
+          : '';
+        setCruceMsg('Cruce terminado: ' + data.encontrados + ' CR encontrados, ' + data.corregidos + ' corregidos, ' + data.alertasLimpiadas + ' alertas viejas limpiadas, ' + data.alertasImporte + ' alertas nuevas, ' + data.pendientesImss + ' facturas sin comprobante asignado por el IMSS, ' + data.ambiguos + ' casos ambiguos, ' + data.incompletos + ' filas incompletas.' + totalTexto);
+      } else {
+        setCruceMsg('Error: ' + data.error);
+      }
+    } catch (err) {
+      setCruceMsg('Error de conexión: ' + err.message);
+    } finally {
+      setCruzando(false);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 22, color: NAVY, marginBottom: 4 }}>
-        Carga de reportes 1003 y 4004
-      </h1>
+      <h1 style={{ fontSize: 22, color: NAVY, marginBottom: 4 }}>Centro de Cargas</h1>
       <p style={{ color: GRIS, fontSize: 14, marginTop: 0, marginBottom: 26 }}>
+        Todos los reportes institucionales en un solo lugar. Cada bloque es independiente.
+      </p>
+
+      <h2 style={{ fontSize: 16, color: NAVY, marginBottom: 4 }}>1 · Reportes 1003 y 4004</h2>
+      <p style={{ color: GRIS, fontSize: 13.5, marginTop: 0, marginBottom: 14 }}>
         Detecta solo si cada archivo es 1003 (pendiente de pago) o 4004 (pagado).
-        Puedes soltar todos los proveedores de una vez.
+        Suelta los de todos los proveedores de una vez. Solo actualiza información de consulta — no modifica tus facturas.
       </p>
 
       <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 22, background: '#fff' }}>
@@ -245,6 +352,46 @@ export default function CargaCrInstitucional() {
         >
           {trabajando ? 'Procesando...' : 'Cargar reportes'}
         </button>
+      </div>
+
+      <h2 style={{ fontSize: 16, color: NAVY, marginTop: 34, marginBottom: 4 }}>2 · Reporte 5005 y cruce</h2>
+      <p style={{ color: '#9A5B00', fontSize: 13.5, marginTop: 0, marginBottom: 14, background: '#FBF0DD', border: '1px solid #EFDCB3', borderRadius: 8, padding: '10px 13px' }}>
+        Atención: el cruce <b>modifica tus facturas</b> — las marca Con contra recibo. No se puede deshacer. Carga el archivo primero y cruza después.
+      </p>
+
+      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 22, background: '#fff' }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 8 }}>Archivo 5005 (.xls o .xlsx)</label>
+        <input type="file" multiple accept=".xls,.xlsx" onChange={(e) => setFiles5005(Array.from(e.target.files || []))} disabled={cruzando} style={{ fontSize: 14 }} />
+        {files5005.length > 0 && <p style={{ fontSize: 13, color: GRIS, marginTop: 10 }}>{files5005.length} archivo(s) seleccionado(s)</p>}
+
+        <div style={{ marginTop: 18, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={cargarArchivo5005} disabled={cruzando || files5005.length === 0}
+            style={{ padding: '11px 22px', border: 'none', borderRadius: 7, background: cruzando || files5005.length === 0 ? '#B9BCC2' : NAVY, color: '#fff', fontSize: 14, fontWeight: 600, cursor: cruzando || files5005.length === 0 ? 'default' : 'pointer' }}>
+            Paso 1 · Cargar 5005
+          </button>
+
+          {!confirmarCruce && (
+            <button onClick={() => setConfirmarCruce(true)} disabled={cruzando}
+              style={{ padding: '11px 22px', border: '1px solid #E3E6EC', borderRadius: 7, background: '#fff', color: NAVY, fontSize: 14, fontWeight: 600, cursor: cruzando ? 'default' : 'pointer' }}>
+              Paso 2 · Ejecutar cruce
+            </button>
+          )}
+          {confirmarCruce && (
+            <button onClick={cruzarCon5005} disabled={cruzando}
+              style={{ padding: '11px 22px', border: 'none', borderRadius: 7, background: '#C23B3B', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Sí, cruzar y marcar facturas
+            </button>
+          )}
+          {confirmarCruce && (
+            <button onClick={() => setConfirmarCruce(false)}
+              style={{ padding: '11px 22px', border: '1px solid #E3E6EC', borderRadius: 7, background: '#fff', color: GRIS, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              Cancelar
+            </button>
+          )}
+        </div>
+
+        {msg5005 && <p style={{ fontSize: 13, color: GRIS, marginTop: 14, fontFamily: 'monospace', lineHeight: 1.6 }}>{msg5005}</p>}
+        {cruceMsg && <p style={{ fontSize: 13, color: NAVY, marginTop: 10, fontFamily: 'monospace', lineHeight: 1.6 }}>{cruceMsg}</p>}
       </div>
 
       {bitacora.length > 0 && (
