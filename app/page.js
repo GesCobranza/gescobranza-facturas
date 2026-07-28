@@ -1044,16 +1044,8 @@ async function cruzarCon5005() {
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                          <td>
                             {f.comprobante || '—'}
-                            {f.comprobante && (
-                              <div>
-                                
-                                  href={'/contra-recibo?comprobante=' + encodeURIComponent(f.comprobante) + '&prov=' + encodeURIComponent(f.prov_no || '')}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  📄 Ver contra recibo
-                                </a>
-                              </div>
+                           {f.comprobante && (
+                              <div><a href={'/contra-recibo?comprobante=' + encodeURIComponent(f.comprobante) + '&prov=' + encodeURIComponent(f.prov_no || '')} target="_blank" rel="noopener noreferrer">📄 Ver contra recibo</a></div>
                             )}
                             {f.comprobante_archivo && (
                               <div><a href="#" onClick={(e) => { e.preventDefault(); verComprobante(f.comprobante_archivo); }}>📎 Ver escaneo</a></div>
