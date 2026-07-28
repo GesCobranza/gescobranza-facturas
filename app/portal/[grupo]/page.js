@@ -20,6 +20,10 @@ export default function PortalGrupo() {
   const [cFiltroDeleg, setCFiltroDeleg] = useState('');
   const [cFiltroProvNo, setCFiltroProvNo] = useState('');
   const [cFiltroEstatus, setCFiltroEstatus] = useState('');
+  const [cEmisionDias, setCEmisionDias] = useState('');
+  const [cEmisionDesde, setCEmisionDesde] = useState('');
+  const [cEmisionHasta, setCEmisionHasta] = useState('');
+  const [cIncluirSinCr, setCIncluirSinCr] = useState(true);
   const [cOrden, setCOrden] = useState('reciente');
   const [cBusquedaInput, setCBusquedaInput] = useState('');
   const [cBusqueda, setCBusqueda] = useState('');
@@ -45,7 +49,7 @@ export default function PortalGrupo() {
 
   useEffect(() => {
     if (autenticado && tab === 'consulta') cargarConsulta();
-  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cOrden, cBusqueda, cPagina]);
+  }, [autenticado, tab, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cOrden, cBusqueda, cPagina, cEmisionDias, cEmisionDesde, cEmisionHasta, cIncluirSinCr]);
 
   useEffect(() => {
     if (autenticado && tab === 'panel') cargarKpi();
@@ -75,6 +79,15 @@ export default function PortalGrupo() {
     setVerificando(false);
   }
 
+  function rangoEmision() {
+    if (cEmisionDias === 'rango') return { desde: cEmisionDesde || null, hasta: cEmisionHasta || null };
+    if (!cEmisionDias) return { desde: null, hasta: null };
+    const d = new Date();
+    const hasta = d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() - parseInt(cEmisionDias, 10));
+    return { desde: d.toISOString().slice(0, 10), hasta: hasta };
+  }
+
   async function cargarConsulta() {
     setConsultaCargando(true);
     const res = await fetch('/api/portal/consulta', {
@@ -84,6 +97,7 @@ export default function PortalGrupo() {
         grupo, clave,
         delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
         busqueda: cBusqueda || null,
+        emisionDesde: rangoEmision().desde, emisionHasta: rangoEmision().hasta, incluirSinCr: cIncluirSinCr,
         pagina: cPagina, porPagina: CONSULTA_POR_PAGINA,
       }),
     });
@@ -113,6 +127,7 @@ export default function PortalGrupo() {
         grupo, clave, exportar: true,
         delegacion: cFiltroDeleg || null, provNo: cFiltroProvNo || null, estatus: cFiltroEstatus || null, orden: cOrden,
         busqueda: cBusqueda || null,
+        emisionDesde: rangoEmision().desde, emisionHasta: rangoEmision().hasta, incluirSinCr: cIncluirSinCr,
       }),
     });
     const data = await res.json();
@@ -258,14 +273,38 @@ export default function PortalGrupo() {
             </select>
             <select value={cFiltroEstatus} onChange={(e) => { setCFiltroEstatus(e.target.value); setCPagina(1); }}>
               <option value="">Todos los estatus</option>
-              <option value="con_cr">Con CR</option>
-              <option value="sin_cr">Sin CR</option>
+              <option value="con_cr">Con contra recibo</option>
+              <option value="programado">Programado a pago</option>
+              <option value="pagado">Pagado</option>
+              <option value="sin_detalle">Con CR, sin detalle</option>
+              <option value="sin_cr">Sin contra recibo</option>
             </select>
             <select value={cOrden} onChange={(e) => { setCOrden(e.target.value); setCPagina(1); }}>
               <option value="reciente">Más reciente primero</option>
               <option value="importe_desc">Importe: mayor a menor</option>
               <option value="importe_asc">Importe: menor a mayor</option>
             </select>
+          </div>
+          <div className="toolbar" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: 12 }}>Contra recibos emitidos en los últimos:</span>
+            <button className={cEmisionDias === '' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias(''); setCPagina(1); }}>Todos</button>
+            <button className={cEmisionDias === '7' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('7'); setCPagina(1); }}>7 días</button>
+            <button className={cEmisionDias === '15' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('15'); setCPagina(1); }}>15 días</button>
+            <button className={cEmisionDias === '30' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('30'); setCPagina(1); }}>30 días</button>
+            <button className={cEmisionDias === '90' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('90'); setCPagina(1); }}>90 días</button>
+            <button className={cEmisionDias === 'rango' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('rango'); setCPagina(1); }}>Rango</button>
+            {cEmisionDias === 'rango' && (
+              <input type="date" value={cEmisionDesde} onChange={(e) => { setCEmisionDesde(e.target.value); setCPagina(1); }} style={{ width: 'auto' }} />
+            )}
+            {cEmisionDias === 'rango' && (
+              <input type="date" value={cEmisionHasta} onChange={(e) => { setCEmisionHasta(e.target.value); setCPagina(1); }} style={{ width: 'auto' }} />
+            )}
+            {cEmisionDias !== '' && (
+              <label className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, margin: 0 }}>
+                <input type="checkbox" checked={cIncluirSinCr} onChange={(e) => { setCIncluirSinCr(e.target.checked); setCPagina(1); }} style={{ width: 'auto', margin: 0 }} />
+                Incluir también mis facturas sin contra recibo
+              </label>
+            )}
           </div>
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
