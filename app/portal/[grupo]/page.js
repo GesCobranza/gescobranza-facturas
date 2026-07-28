@@ -38,6 +38,8 @@ export default function PortalGrupo() {
   // Flujo de Cobranza
   const [calData, setCalData] = useState(null);
   const [calCargando, setCalCargando] = useState(false);
+  const [calFiltroProvNo, setCalFiltroProvNo] = useState('');
+  const [calFiltroDeleg, setCalFiltroDeleg] = useState('');
   const CONSULTA_POR_PAGINA = 50;
 
   // ---- Panel KPI ----
@@ -61,7 +63,7 @@ export default function PortalGrupo() {
 
   useEffect(() => {
     if (autenticado && tab === 'flujo') cargarCalendario();
-  }, [autenticado, tab]);
+  }, [autenticado, tab, calFiltroProvNo, calFiltroDeleg]);
 
   async function ingresar(e) {
     e.preventDefault();
@@ -205,7 +207,7 @@ export default function PortalGrupo() {
       const res = await fetch('/api/portal/calendario', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grupo, clave, semanas: 4 }),
+        body: JSON.stringify({ grupo, clave, semanas: 4, provNo: calFiltroProvNo || null, delegacion: calFiltroDeleg || null }),
       });
       const data = await res.json();
       setCalData(data.ok ? data.calendario : null);
@@ -478,6 +480,19 @@ export default function PortalGrupo() {
 
       {tab === 'flujo' && (
         <>
+          <div className="toolbar">
+            <select value={calFiltroProvNo} onChange={(e) => setCalFiltroProvNo(e.target.value)}>
+              <option value="">Todos mis laboratorios</option>
+              {empresas.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
+            </select>
+            <select value={calFiltroDeleg} onChange={(e) => setCalFiltroDeleg(e.target.value)}>
+              <option value="">Todas las delegaciones</option>
+              {delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
+            </select>
+            {(calFiltroProvNo || calFiltroDeleg) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setCalFiltroProvNo(''); setCalFiltroDeleg(''); }}>Limpiar filtros</button>
+            )}
+          </div>
           {calCargando && <p className="muted">Cargando…</p>}
           {!calCargando && !calData && <p className="muted">No se pudo cargar el flujo de cobranza.</p>}
           {!calCargando && calData && (
