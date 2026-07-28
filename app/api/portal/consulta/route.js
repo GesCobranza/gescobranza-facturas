@@ -2,36 +2,44 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 import { validarClavePortal } from '../../../../lib/portalAuth';
 
-const COLUMNAS_SEGURAS = 'id, alta, grupo, empresa, delegacion, importe, tiene_cr, comprobante, alerta_importe, fecha_captura, prov_no, num_factura';
+// Se consulta la vista facturas_cr (facturas + detalle institucional del contra recibo)
+const COLUMNAS_SEGURAS =
+  'id, alta, grupo, empresa, delegacion, importe, tiene_cr, comprobante, alerta_importe, fecha_captura, prov_no, prov_no_norm, num_factura, cr_fecha_emision, cr_fecha_prog_pago, cr_fecha_pago, cr_referencia_pago, cr_banco, cr_fuente';
 
-// Quita ceros a la izquierda para que "0000146440" y "146440" se reconozcan como el mismo proveedor
+// Quita ceros a la izquierda para que "0000146440" y "146440" sean el mismo proveedor
 function normalizarProvNo(valor) {
   const limpio = String(valor || '').trim().replace(/^0+/, '');
   return limpio || '0';
 }
 
-// Pega a cada factura el detalle institucional de su contra recibo (reportes 1003 / 4004)
-async function enriquecerConCr(supabase, filas) {
-  const conCr = (filas || []).filter((f) => f.comprobante && String(f.comprobante).trim() !== '');
-  if (conCr.length === 0) return filas;
-
-  const comprobantes = Array.from(new Set(conCr.map((f) => String(f.comprobante).trim())));
-  const mapa = {};
-  const BLOQUE = 300;
-
-  for (let i = 0; i < comprobantes.length; i += BLOQUE) {
-    const lote = comprobantes.slice(i, i + BLOQUE);
-    const { data } = await supabase
-      .from('cr_institucional')
-      .select('comprobante, prov_no_norm, fecha_emision, fecha_prog_pago, fecha_pago, referencia_pago, banco, fuente')
-      .in('comprobante', lote);
-    (data || []).forEach((c) => { mapa[c.comprobante + '|' + c.prov_no_norm] = c; });
-  }
-
-  return filas.map((f) => {
-    if (!f.comprobante) return f;
-    const cr = mapa[String(f.comprobante).trim() + '|' + normalizarProvNo(f.prov_no)];
-    return cr ? Object.assign({}, f, { cr: cr }) : f;
+// Convierte las columnas planas cr_* en un objeto cr, como lo espera el portal
+function darForma(filas) {
+  return (filas || []).map((f) => {
+    const salida = {
+      id: f.id,
+      alta: f.alta,
+      grupo: f.grupo,
+      empresa: f.empresa,
+      delegacion: f.delegacion,
+      importe: f.importe,
+      tiene_cr: f.tiene_cr,
+      comprobante: f.comprobante,
+      alerta_importe: f.alerta_importe,
+      fecha_captura: f.fecha_captura,
+      prov_no: f.prov_no,
+      num_factura: f.num_factura,
+    };
+    if (f.cr_fuente) {
+      salida.cr = {
+        fecha_emision: f.cr_fecha_emision,
+        fecha_prog_pago: f.cr_fecha_prog_pago,
+        fecha_pago: f.cr_fecha_pago,
+        referencia_pago: f.cr_referencia_pago,
+        banco: f.cr_banco,
+        fuente: f.cr_fuente,
+      };
+    }
+    return salida;
   });
 }
 
@@ -47,21 +55,44 @@ export async function POST(request) {
 
   const delegacion = body.delegacion || null;
   const provNo = body.provNo || null;
-  const estatus = body.estatus || null; // 'con_cr' | 'sin_cr' | null
-  const orden = body.orden || 'reciente'; // 'reciente' | 'importe_desc' | 'importe_asc'
+  const estatus = body.estatus || null; // con_cr | sin_cr | programado | pagado | sin_detalle
+  const orden = body.orden || 'reciente';
   const busqueda = String(body.busqueda || '').trim();
   const exportar = body.exportar === true;
+  const emisionDesde = body.emisionDesde || null;
+  const emisionHasta = body.emisionHasta || null;
+  const incluirSinCr = body.incluirSinCr !== false;
 
   function construirQuery() {
-    // .eq('grupo', grupo) siempre presente y siempre el grupo YA AUTENTICADO — nunca uno enviado libremente por el cliente
-    let q = supabase.from('facturas').select(COLUMNAS_SEGURAS, { count: 'exact' }).eq('grupo', grupo);
+    // .eq('grupo', grupo) siempre con el grupo YA AUTENTICADO — nunca uno enviado libremente por el navegador
+    let q = supabase.from('facturas_cr').select(COLUMNAS_SEGURAS, { count: 'exact' }).eq('grupo', grupo);
+
     if (orden === 'importe_desc') q = q.order('importe', { ascending: false });
     else if (orden === 'importe_asc') q = q.order('importe', { ascending: true });
     else q = q.order('fecha_captura', { ascending: false });
+
     if (delegacion) q = q.eq('delegacion', delegacion);
-    if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
+    if (provNo) q = q.eq('prov_no_norm', normalizarProvNo(provNo));
+
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
-    if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
+    else if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
+    else if (estatus === 'programado') q = q.eq('tiene_cr', true).eq('cr_fuente', '1003');
+    else if (estatus === 'pagado') q = q.eq('tiene_cr', true).eq('cr_fuente', '4004');
+    else if (estatus === 'sin_detalle') q = q.eq('tiene_cr', true).is('cr_fuente', null);
+
+    if (emisionDesde || emisionHasta) {
+      const partes = [];
+      if (emisionDesde) partes.push('cr_fecha_emision.gte.' + emisionDesde);
+      if (emisionHasta) partes.push('cr_fecha_emision.lte.' + emisionHasta);
+      if (incluirSinCr) {
+        const cond = partes.length > 1 ? 'and(' + partes.join(',') + ')' : partes[0];
+        q = q.or(cond + ',tiene_cr.is.false');
+      } else {
+        if (emisionDesde) q = q.gte('cr_fecha_emision', emisionDesde);
+        if (emisionHasta) q = q.lte('cr_fecha_emision', emisionHasta);
+      }
+    }
+
     if (busqueda) {
       const esc = busqueda.replace(/[%_]/g, '\\$&');
       q = q.or(`alta.ilike.%${esc}%,num_factura.ilike.%${esc}%`);
@@ -80,8 +111,8 @@ export async function POST(request) {
       if (data.length < PAGINA) break;
       desde += PAGINA;
     }
-    const conDetalle = await enriquecerConCr(supabase, todas);
-    return NextResponse.json({ ok: true, facturas: conDetalle, total: conDetalle.length });
+    const salida = darForma(todas);
+    return NextResponse.json({ ok: true, facturas: salida, total: salida.length });
   }
 
   const pagina = Math.max(1, parseInt(body.pagina || 1, 10));
@@ -90,6 +121,5 @@ export async function POST(request) {
 
   const { data, error, count } = await construirQuery().range(desde, desde + porPagina - 1);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  const conDetalle = await enriquecerConCr(supabase, data);
-  return NextResponse.json({ ok: true, facturas: conDetalle, total: count, pagina, porPagina });
+  return NextResponse.json({ ok: true, facturas: darForma(data), total: count, pagina, porPagina });
 }
