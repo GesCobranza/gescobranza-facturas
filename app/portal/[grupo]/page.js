@@ -120,6 +120,11 @@ export default function PortalGrupo() {
       Alta: f.alta, Empresa: f.empresa, Delegación: f.delegacion,
       Importe: Number(f.importe), CR: f.tiene_cr ? 'Con CR' : 'Sin CR',
       Comprobante: f.comprobante || '', 'Fecha Captura': f.fecha_captura || '',
+      'Fecha emisión CR': f.cr ? fmtF(f.cr.fecha_emision) : '',
+      'Pago programado': f.cr ? fmtF(f.cr.fecha_prog_pago) : '',
+      'Fecha de pago': f.cr && f.cr.fuente === '4004' ? fmtF(f.cr.fecha_pago) : '',
+      'Referencia de pago': f.cr && f.cr.fuente === '4004' ? (f.cr.referencia_pago || '') : '',
+      Banco: f.cr && f.cr.fuente === '4004' ? (f.cr.banco || '') : '',
     }));
     const ws = XLSX.utils.json_to_sheet(filas);
     const wb = XLSX.utils.book_new();
@@ -138,6 +143,12 @@ export default function PortalGrupo() {
     if (!iso) return ['', '', ''];
     const p = String(iso).split('-');
     return p.length === 3 ? [p[2], p[1], p[0]] : ['', '', ''];
+  }
+
+  function fmtF(iso) {
+    if (!iso) return '';
+    const p = crPartes(iso);
+    return p[0] + '/' + p[1] + '/' + p[2];
   }
 
   function crMoney(n) {
@@ -265,11 +276,14 @@ export default function PortalGrupo() {
                     <tr key={f.id}>
                       <td>{f.alta}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                       <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                      <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                      <td>{!f.tiene_cr ? <span className="tag tag-amber">Sin CR</span> : f.cr && f.cr.fuente === '4004' ? <span className="tag tag-green">Pagado</span> : f.cr ? <span className="tag" style={{ background: '#EAF1FE', color: '#2F6FE4' }}>Programado</span> : <span className="tag tag-green">Con CR</span>}</td>
                       <td>
                         {f.comprobante || '—'}
                         {f.comprobante && (
                           <div><a href="#" onClick={(e) => { e.preventDefault(); abrirContraRecibo(f.comprobante); }}>📄 Ver contra recibo</a></div>
+                        )}
+                        {f.cr && (
+                          <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.55, marginTop: 2 }}>Emitido {fmtF(f.cr.fecha_emision)}{f.cr.fuente === '4004' ? ' · Pagado ' + fmtF(f.cr.fecha_pago) + (f.cr.referencia_pago ? ' · ref. ' + f.cr.referencia_pago : '') + (f.cr.banco ? ' · ' + f.cr.banco : '') : ' · Pago programado ' + fmtF(f.cr.fecha_prog_pago)}</div>
                         )}
                         {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
                       </td>
