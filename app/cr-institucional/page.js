@@ -293,6 +293,8 @@ export default function CentroDeCargas() {
 
   return (
     <div style={{ maxWidth: 860, margin: '0 auto', padding: '32px 20px 80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <a href="/" className="btn btn-ghost btn-sm" style={{ display: 'inline-block', marginBottom: 16, textDecoration: 'none' }}>← Regresar al menú principal</a>
+
       <h1 style={{ fontSize: 22, color: NAVY, marginBottom: 4 }}>Centro de Cargas</h1>
       <p style={{ color: GRIS, fontSize: 14, marginTop: 0, marginBottom: 26 }}>
         Todos los reportes institucionales en un solo lugar. Cada bloque es independiente.
