@@ -27,6 +27,9 @@ export default function PortalGrupo() {
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
   const [consultaCargando, setConsultaCargando] = useState(false);
   const [exportando, setExportando] = useState(false);
+
+  // Contra recibo — ventana emergente
+  const [crAbierto, setCrAbierto] = useState(null);
   const CONSULTA_POR_PAGINA = 50;
 
   // ---- Panel KPI ----
@@ -123,6 +126,39 @@ export default function PortalGrupo() {
     XLSX.utils.book_append_sheet(wb, ws, 'Consulta');
     XLSX.writeFile(wb, `facturas-${grupo}.xlsx`);
     setExportando(false);
+  }
+
+  function selloFecha() {
+    const a = new Date();
+    const dd = (n) => String(n).padStart(2, '0');
+    return { f: dd(a.getDate()) + '/' + dd(a.getMonth() + 1) + '/' + a.getFullYear(), h: dd(a.getHours()) + ':' + dd(a.getMinutes()) + ':' + dd(a.getSeconds()) };
+  }
+
+  function crPartes(iso) {
+    if (!iso) return ['', '', ''];
+    const p = String(iso).split('-');
+    return p.length === 3 ? [p[2], p[1], p[0]] : ['', '', ''];
+  }
+
+  function crMoney(n) {
+    if (n === null || n === undefined || n === '') return '';
+    return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MXN';
+  }
+
+  async function abrirContraRecibo(comprobante) {
+    setCrAbierto({ cargando: true });
+    try {
+      const res = await fetch('/api/portal/contra-recibo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupo, clave, comprobante }),
+      });
+      const data = await res.json();
+      if (!data.ok) setCrAbierto({ error: data.error || 'Contra recibo no disponible.' });
+      else setCrAbierto(Object.assign({}, data, { impreso: selloFecha() }));
+    } catch (e) {
+      setCrAbierto({ error: 'No se pudo abrir el contra recibo.' });
+    }
   }
 
   const totalPaginasConsulta = Math.max(1, Math.ceil((consultaData.total || 0) / CONSULTA_POR_PAGINA));
@@ -232,6 +268,9 @@ export default function PortalGrupo() {
                       <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
                       <td>
                         {f.comprobante || '—'}
+                        {f.comprobante && (
+                          <div><a href="#" onClick={(e) => { e.preventDefault(); abrirContraRecibo(f.comprobante); }}>📄 Ver contra recibo</a></div>
+                        )}
                         {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
                       </td>
                     </tr>
@@ -337,6 +376,49 @@ export default function PortalGrupo() {
             </>
           )}
         </>
+      )}
+
+      {crAbierto && (
+        <div onClick={() => setCrAbierto(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(20,25,38,0.55)', zIndex: 999, overflowY: 'auto', padding: '28px 14px' }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ maxWidth: 680, margin: '0 auto', background: '#fff', borderRadius: 10, padding: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <strong style={{ fontSize: 15 }}>Contra recibo</strong>
+              <button className="btn btn-ghost btn-sm" onClick={() => setCrAbierto(null)}>Cerrar</button>
+            </div>
+            {crAbierto.cargando && <p className="muted">Cargando…</p>}
+            {crAbierto.error && <p className="muted" style={{ color: 'var(--red)' }}>{crAbierto.error}</p>}
+            {crAbierto.cr && (
+              <>
+                <div style={{ position: 'relative', width: '100%', height: 620, border: '1px solid #E3E6EC', fontFamily: 'Arial, sans-serif', fontSize: 13, color: '#1a1a1a' }}>
+                  <div style={{ position: 'absolute', left: '65%', top: '10%', lineHeight: 1.35, whiteSpace: 'nowrap' }}>{crAbierto.impreso.f}<br />{crAbierto.impreso.h}</div>
+                  <div style={{ position: 'absolute', left: '1%', top: '17%', whiteSpace: 'nowrap' }}>{crAbierto.cr.un || ''}</div>
+                  <div style={{ position: 'absolute', left: '27%', top: '17%', whiteSpace: 'nowrap' }}>{crAbierto.cr.origen || ''}</div>
+                  <div style={{ position: 'absolute', left: '8%', top: '25%', whiteSpace: 'nowrap' }}>{crAbierto.cr.comprobante}</div>
+                  <div style={{ position: 'absolute', left: '8%', top: '44%', whiteSpace: 'nowrap' }}>({crAbierto.cr.prov_no || ''}) {crAbierto.cr.prov_nombre || ''}</div>
+                  <div style={{ position: 'absolute', left: '15%', top: '51%', whiteSpace: 'nowrap' }}>{crMoney(crAbierto.cr.importe_mxn)}</div>
+                  <div style={{ position: 'absolute', left: '20%', top: '58%', whiteSpace: 'nowrap' }}>{crAbierto.cr.factura_texto || ''}</div>
+                  <div style={{ position: 'absolute', left: '58%', top: '63%' }}>{crPartes(crAbierto.cr.fecha_emision)[0]}</div>
+                  <div style={{ position: 'absolute', left: '68%', top: '63%' }}>{crPartes(crAbierto.cr.fecha_emision)[1]}</div>
+                  <div style={{ position: 'absolute', left: '78%', top: '63%' }}>{crPartes(crAbierto.cr.fecha_emision)[2]}</div>
+                  <div style={{ position: 'absolute', left: '58%', top: '71%' }}>{crPartes(crAbierto.cr.fecha_prog_pago)[0]}</div>
+                  <div style={{ position: 'absolute', left: '68%', top: '71%' }}>{crPartes(crAbierto.cr.fecha_prog_pago)[1]}</div>
+                  <div style={{ position: 'absolute', left: '78%', top: '71%' }}>{crPartes(crAbierto.cr.fecha_prog_pago)[2]}</div>
+                  <div style={{ position: 'absolute', left: '37%', top: '90%', whiteSpace: 'nowrap' }}>{crAbierto.cr.usuario || ''}</div>
+                </div>
+                <p className="muted" style={{ marginTop: 14 }}>{crAbierto.cr.fuente === '4004' ? 'Pagado el ' + crPartes(crAbierto.cr.fecha_pago).join('/') + ' · referencia ' + (crAbierto.cr.referencia_pago || 's/r') + ' · ' + (crAbierto.cr.banco || '') : 'Pendiente de pago · programado para el ' + crPartes(crAbierto.cr.fecha_prog_pago).join('/')}</p>
+                <strong style={{ fontSize: 14 }}>Facturas amparadas ({crAbierto.facturas.length})</strong>
+                <table style={{ marginTop: 8 }}>
+                  <thead><tr><th>Alta</th><th>Factura</th><th>Delegación</th><th>Importe</th></tr></thead>
+                  <tbody>
+                    {crAbierto.facturas.map((x, i) => (
+                      <tr key={i}><td>{x.alta}</td><td>{x.num_factura || ''}</td><td>{x.delegacion || ''}</td><td>{crMoney(x.importe).replace(' MXN', '')}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="app-footer">
