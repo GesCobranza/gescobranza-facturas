@@ -10,6 +10,31 @@ function normalizarProvNo(valor) {
   return limpio || '0';
 }
 
+// Pega a cada factura el detalle institucional de su contra recibo (reportes 1003 / 4004)
+async function enriquecerConCr(supabase, filas) {
+  const conCr = (filas || []).filter((f) => f.comprobante && String(f.comprobante).trim() !== '');
+  if (conCr.length === 0) return filas;
+
+  const comprobantes = Array.from(new Set(conCr.map((f) => String(f.comprobante).trim())));
+  const mapa = {};
+  const BLOQUE = 300;
+
+  for (let i = 0; i < comprobantes.length; i += BLOQUE) {
+    const lote = comprobantes.slice(i, i + BLOQUE);
+    const { data } = await supabase
+      .from('cr_institucional')
+      .select('comprobante, prov_no_norm, fecha_emision, fecha_prog_pago, fecha_pago, referencia_pago, banco, fuente')
+      .in('comprobante', lote);
+    (data || []).forEach((c) => { mapa[c.comprobante + '|' + c.prov_no_norm] = c; });
+  }
+
+  return filas.map((f) => {
+    if (!f.comprobante) return f;
+    const cr = mapa[String(f.comprobante).trim() + '|' + normalizarProvNo(f.prov_no)];
+    return cr ? Object.assign({}, f, { cr: cr }) : f;
+  });
+}
+
 export async function POST(request) {
   const body = await request.json();
   const grupo = String(body.grupo || '').trim();
@@ -55,7 +80,8 @@ export async function POST(request) {
       if (data.length < PAGINA) break;
       desde += PAGINA;
     }
-    return NextResponse.json({ ok: true, facturas: todas, total: todas.length });
+    const conDetalle = await enriquecerConCr(supabase, todas);
+    return NextResponse.json({ ok: true, facturas: conDetalle, total: conDetalle.length });
   }
 
   const pagina = Math.max(1, parseInt(body.pagina || 1, 10));
@@ -64,5 +90,6 @@ export async function POST(request) {
 
   const { data, error, count } = await construirQuery().range(desde, desde + porPagina - 1);
   if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, facturas: data, total: count, pagina, porPagina });
+  const conDetalle = await enriquecerConCr(supabase, data);
+  return NextResponse.json({ ok: true, facturas: conDetalle, total: count, pagina, porPagina });
 }
