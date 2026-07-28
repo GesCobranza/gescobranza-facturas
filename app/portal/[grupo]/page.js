@@ -34,6 +34,10 @@ export default function PortalGrupo() {
 
   // Contra recibo — ventana emergente
   const [crAbierto, setCrAbierto] = useState(null);
+
+  // Flujo de Cobranza
+  const [calData, setCalData] = useState(null);
+  const [calCargando, setCalCargando] = useState(false);
   const CONSULTA_POR_PAGINA = 50;
 
   // ---- Panel KPI ----
@@ -54,6 +58,10 @@ export default function PortalGrupo() {
   useEffect(() => {
     if (autenticado && tab === 'panel') cargarKpi();
   }, [autenticado, tab, kFiltroDeleg, kFiltroProvNo]);
+
+  useEffect(() => {
+    if (autenticado && tab === 'flujo') cargarCalendario();
+  }, [autenticado, tab]);
 
   async function ingresar(e) {
     e.preventDefault();
@@ -171,6 +179,42 @@ export default function PortalGrupo() {
     return '$' + Number(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' MXN';
   }
 
+  function mny(n) {
+    return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function agruparPorSemana(lista) {
+    const grupos = [];
+    (lista || []).forEach((d) => {
+      const f = new Date(d.fecha + 'T12:00:00');
+      const dow = (f.getDay() + 6) % 7;
+      const lunes = new Date(f);
+      lunes.setDate(f.getDate() - dow);
+      const clave = lunes.toISOString().slice(0, 10);
+      let g = grupos.find((x) => x.clave === clave);
+      if (!g) { g = { clave: clave, dias: [], total: 0 }; grupos.push(g); }
+      g.dias.push(d);
+      g.total += Number(d.importe_cr || 0);
+    });
+    return grupos;
+  }
+
+  async function cargarCalendario() {
+    setCalCargando(true);
+    try {
+      const res = await fetch('/api/portal/calendario', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupo, clave, semanas: 4 }),
+      });
+      const data = await res.json();
+      setCalData(data.ok ? data.calendario : null);
+    } catch (e) {
+      setCalData(null);
+    }
+    setCalCargando(false);
+  }
+
   async function abrirContraRecibo(comprobante) {
     setCrAbierto({ cargando: true });
     try {
@@ -244,6 +288,7 @@ export default function PortalGrupo() {
       <nav className="tabs">
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
         <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
+        <button className={tab === 'flujo' ? 'active' : ''} onClick={() => setTab('flujo')}>Flujo de Cobranza</button>
       </nav>
 
       {tab === 'consulta' && (
@@ -425,6 +470,87 @@ export default function PortalGrupo() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {tab === 'flujo' && (
+        <>
+          {calCargando && <p className="muted">Cargando…</p>}
+          {!calCargando && !calData && <p className="muted">No se pudo cargar el flujo de cobranza.</p>}
+          {!calCargando && calData && (
+            <>
+              <div className="kpi-stat-grid" style={{ marginBottom: 16 }}>
+                <div className="kpi-stat" style={{ background: 'var(--card)', border: '1px solid var(--line)' }}>
+                  <div className="lbl" style={{ color: 'var(--text-soft)' }}>Por cobrar · próximas 4 semanas</div>
+                  <div className="num" style={{ color: 'var(--navy)' }}>{mny(calData.total_proximo)}</div>
+                </div>
+                <div className="kpi-stat" style={{ background: Number(calData.total_vencido) > 0 ? 'var(--red-soft)' : 'var(--card)', border: '1px solid var(--line)' }}>
+                  <div className="lbl" style={{ color: Number(calData.total_vencido) > 0 ? 'var(--red)' : 'var(--text-soft)' }}>Vencido sin pagar</div>
+                  <div className="num" style={{ color: Number(calData.total_vencido) > 0 ? 'var(--red)' : 'var(--green)' }}>{mny(calData.total_vencido)}</div>
+                </div>
+                <div className="kpi-stat" style={{ background: 'var(--green-soft)' }}>
+                  <div className="lbl" style={{ color: 'var(--green)' }}>Cobrado · últimos 30 días</div>
+                  <div className="num" style={{ color: 'var(--green)' }}>{mny(calData.total_cobrado)}</div>
+                </div>
+              </div>
+
+              {calData.vencidos && calData.vencidos.length > 0 && (
+                <div className="card" style={{ borderColor: 'var(--red)' }}>
+                  <h2 style={{ color: 'var(--red)' }}>Contra recibos vencidos</h2>
+                  <p className="muted">El IMSS programó estos pagos y aún no los ha realizado.</p>
+                  <table>
+                    <thead><tr><th>Fecha programada</th><th>Contra recibos</th><th>Facturas</th><th>Importe</th></tr></thead>
+                    <tbody>
+                      {calData.vencidos.map((d) => (
+                        <tr key={d.fecha}><td>{fmtF(d.fecha)}</td><td>{d.contra_recibos}</td><td>{d.facturas}</td><td>{mny(d.importe_cr)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="card">
+                <h2>Pagos programados</h2>
+                <p className="muted">Fechas en que el IMSS tiene programado depositar. Considera únicamente las facturas gestionadas por Ges Cobranza.</p>
+                {calData.proximos.length === 0 && <p className="muted">Sin pagos programados en las próximas 4 semanas.</p>}
+                {agruparPorSemana(calData.proximos).map((s) => (
+                  <details key={s.clave} open>
+                    <summary style={{ cursor: 'pointer', padding: '8px 0', fontWeight: 600, color: 'var(--navy)' }}>Semana del {fmtF(s.clave)} · {mny(s.total)}</summary>
+                    <table style={{ marginBottom: 10 }}>
+                      <thead><tr><th>Fecha</th><th>Contra recibos</th><th>Facturas</th><th>Importe</th></tr></thead>
+                      <tbody>
+                        {s.dias.map((d) => (
+                          <tr key={d.fecha}><td>{fmtF(d.fecha)}</td><td>{d.contra_recibos}</td><td>{d.facturas}</td><td>{mny(d.importe_cr)}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </details>
+                ))}
+              </div>
+
+              <div className="card">
+                <h2>Cobrado en los últimos 30 días</h2>
+                <p className="muted">Depósitos ya realizados por el IMSS, con su referencia bancaria.</p>
+                {calData.cobrado.length === 0 && <p className="muted">Sin depósitos registrados en los últimos 30 días.</p>}
+                {calData.cobrado.length > 0 && (
+                  <table>
+                    <thead><tr><th>Fecha de pago</th><th>Contra recibos</th><th>Facturas</th><th>Referencias</th><th>Importe</th></tr></thead>
+                    <tbody>
+                      {calData.cobrado.map((d) => (
+                        <tr key={d.fecha}>
+                          <td>{fmtF(d.fecha)}</td>
+                          <td>{d.contra_recibos}</td>
+                          <td>{d.facturas}</td>
+                          <td className="muted">{(d.referencias || []).join(', ')}</td>
+                          <td style={{ color: 'var(--green)' }}>{mny(d.importe_cr)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </>
           )}
