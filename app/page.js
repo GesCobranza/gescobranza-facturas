@@ -1042,10 +1042,21 @@ async function cruzarCon5005() {
                           <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                           <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
-                          <td>
+                         <td>
                             {f.comprobante || '—'}
+                            {f.comprobante && (
+                              <div>
+                                
+                                  href={'/contra-recibo?comprobante=' + encodeURIComponent(f.comprobante) + '&prov=' + encodeURIComponent(f.prov_no || '')}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  📄 Ver contra recibo
+                                </a>
+                              </div>
+                            )}
                             {f.comprobante_archivo && (
-                              <div><a href="#" onClick={(e) => { e.preventDefault(); verComprobante(f.comprobante_archivo); }}>📎 Ver comprobante</a></div>
+                              <div><a href="#" onClick={(e) => { e.preventDefault(); verComprobante(f.comprobante_archivo); }}>📎 Ver escaneo</a></div>
                             )}
                             {f.alerta_importe && <div className="muted" style={{ color: 'var(--red)' }}>{f.alerta_importe}</div>}
                           </td>
