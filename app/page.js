@@ -940,6 +940,7 @@ async function cruzarCon5005() {
                 <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
                   <option value="Sophie">Sophie</option>
                   <option value="Mariano">Mariano</option>
+                  <option value="Sarahi">Sarahi</option>
                 </select>
               </div>
               <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()))}>
@@ -1022,6 +1023,7 @@ async function cruzarCon5005() {
                     <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
                       <option value="Sophie">Sophie</option>
                       <option value="Mariano">Mariano</option>
+                      <option value="Sarahi">Sarahi</option>
                     </select>
                   </div>
                   <div className="toolbar">
@@ -1081,6 +1083,7 @@ async function cruzarCon5005() {
               <option value="">Todos los capturistas</option>
               <option value="Sophie">Sophie</option>
               <option value="Mariano">Mariano</option>
+              <option value="Sarahi">Sarahi</option>
             </select>
             <button
               className={cFiltroObservacion ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
