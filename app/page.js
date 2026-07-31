@@ -48,6 +48,7 @@ export default function Home() {
   const [altaExiste, setAltaExiste] = useState(false);
   const [verificandoAlta, setVerificandoAlta] = useState(false);
   const [alta5005, setAlta5005] = useState(null);
+  const [altaOtroProv, setAltaOtroProv] = useState(null);
   const [importeTexto, setImporteTexto] = useState('');
   const [importeRaw, setImporteRaw] = useState(0);
   const [capturista, setCapturista] = useState('Sophie');
@@ -207,9 +208,11 @@ export default function Home() {
     if (!limpio) { setAltaExiste(false); setAlta5005(null); return; }
     setVerificandoAlta(true);
     try {
-      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio));
+      const provActual = empresaObj ? String(empresaObj.numero).replace(/^0+/, '') : '';
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio) + '&prov=' + encodeURIComponent(provActual));
       const data = await res.json();
       setAltaExiste(data.ok ? data.existe : false);
+      setAltaOtroProv(data.ok && data.otroProveedor ? data.detalleOtro : null);
     } catch (err) {
       // si falla la verificación, no bloqueamos — el servidor la revisa de todas formas al guardar
     }
@@ -326,10 +329,11 @@ export default function Home() {
     const limpio = limpiarInvisibles(valor).trim();
     if (!limpio) return;
     try {
-      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio));
+      const provActual = empresaObj ? String(empresaObj.numero).replace(/^0+/, '') : '';
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio) + '&prov=' + encodeURIComponent(provActual));
       const data = await res.json();
       if (data.ok) {
-        setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, existeEnServidor: data.existe } : f)));
+        setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, existeEnServidor: data.existe, otroProv: data.otroProveedor ? data.detalleOtro : null } : f)));
       }
     } catch (err) {
       // si falla, no bloqueamos aquí — el servidor lo revisa de nuevo al guardar
@@ -904,12 +908,15 @@ async function cruzarCon5005() {
                   <label>Número de alta ⚠ crítico</label>
                   <input
                     value={alta}
-                    onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); }}
+                    onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); setAltaOtroProv(null); }}
                     onBlur={(e) => verificarAltaExistente(e.target.value)}
                     placeholder="Ej. AL-2026-00981"
                   />
                   {verificandoAlta && <span className="hint muted">Verificando…</span>}
-                  {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes — revisa si es duplicado</span>}
+                  {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes con este mismo proveedor — revisa si es duplicado</span>}
+                  {!altaExiste && altaOtroProv && (
+                    <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Este número de alta ya existe, pero de {altaOtroProv.empresa} ({altaOtroProv.grupo}). El IMSS reutiliza altas entre ejercicios — puedes guardar.</span>
+                  )}
                   {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
                     <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos (ej. 118001-106261)</span>
                   )}
@@ -988,7 +995,10 @@ async function cruzarCon5005() {
                                   {dup ? '✗ Alta repetida en este mismo lote' : val.hint}
                                 </span>
                               )}
-                              {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada antes</span>}
+                              {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada con este proveedor</span>}
+                              {!f.existeEnServidor && f.otroProv && (
+                                <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Alta reutilizada — la otra es de {f.otroProv.empresa}</span>
+                              )}
                               {f.alta.trim() !== '' && !FORMATO_ALTA.test(f.alta.trim()) && (
                                 <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — 6 dígitos, guion, 6 dígitos</span>
                               )}
