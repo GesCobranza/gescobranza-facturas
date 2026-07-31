@@ -9,6 +9,11 @@ function trocear(arr, tamano) {
   return bloques;
 }
 
+// Quita ceros a la izquierda para comparar altas y proveedores de forma consistente
+function sinCeros(v) {
+  return String(v == null ? '' : v).trim().replace(/^0+/, '') || '';
+}
+
 function claveDelegacion(texto) {
   const m = String(texto || '').match(/(OOAD|UMAE)\D{0,5}(\d+)/i);
   if (!m) return null;
@@ -87,27 +92,47 @@ export async function POST(request) {
   const bloques = trocear(candidatos, 500);
 
   for (const bloque of bloques) {
-    const payloads = bloque.map((c) => c.payload);
-    const { data: filasGuardadas, error: errUpsert } = await supabase
-      .from('facturas')
-      .upsert(payloads, { onConflict: 'alta', ignoreDuplicates: true })
-      .select('alta');
+    const altasBloque = bloque.map((c) => c.payload.alta);
 
-    if (errUpsert) {
+    // El IMSS reutiliza números de alta entre ejercicios, así que una misma alta
+    // puede pertenecer a dos proveedores distintos. Solo es duplicado si coinciden ambos.
+    const { data: yaExisten, error: errBusca } = await supabase
+      .from('facturas')
+      .select('alta, prov_no')
+      .in('alta', altasBloque);
+
+    if (errBusca) {
       return NextResponse.json({
         ok: false,
-        error: `Se importaron ${insertadas} filas antes de un error. Detalle: ${errUpsert.message}`,
+        error: `Se importaron ${insertadas} filas antes de un error al revisar duplicados. Detalle: ${errBusca.message}`,
       }, { status: 500 });
     }
 
-    const altasGuardadas = new Set((filasGuardadas || []).map((r) => r.alta));
+    const clavesExistentes = new Set(
+      (yaExisten || []).map((r) => sinCeros(r.alta) + '|' + sinCeros(r.prov_no))
+    );
+
+    const nuevos = [];
     bloque.forEach((c) => {
-      if (altasGuardadas.has(c.payload.alta)) {
-        insertadas++;
+      const clave = sinCeros(c.payload.alta) + '|' + sinCeros(c.payload.prov_no);
+      if (clavesExistentes.has(clave)) {
+        omitidas.push({ fila: c.fila, alta: c.payload.alta, motivo: 'Esa alta ya existía en el sistema con el mismo proveedor.', categoria: 'informativo' });
       } else {
-        omitidas.push({ fila: c.fila, alta: c.payload.alta, motivo: 'Ese número de alta ya existía en el sistema.', categoria: 'informativo' });
+        clavesExistentes.add(clave);
+        nuevos.push(c.payload);
       }
     });
+
+    if (nuevos.length > 0) {
+      const { error: errIns } = await supabase.from('facturas').insert(nuevos);
+      if (errIns) {
+        return NextResponse.json({
+          ok: false,
+          error: `Se importaron ${insertadas} filas antes de un error. Detalle: ${errIns.message}`,
+        }, { status: 500 });
+      }
+      insertadas += nuevos.length;
+    }
   }
 
   const omitidasRevisar = omitidas.filter((o) => o.categoria === 'revisar');
