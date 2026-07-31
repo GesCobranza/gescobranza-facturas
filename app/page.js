@@ -47,6 +47,7 @@ export default function Home() {
   const [alta, setAlta] = useState('');
   const [altaExiste, setAltaExiste] = useState(false);
   const [verificandoAlta, setVerificandoAlta] = useState(false);
+  const [alta5005, setAlta5005] = useState(null);
   const [importeTexto, setImporteTexto] = useState('');
   const [importeRaw, setImporteRaw] = useState(0);
   const [capturista, setCapturista] = useState('Sophie');
@@ -192,17 +193,44 @@ export default function Home() {
     return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
+  // Quita caracteres invisibles (U+200B..U+200F, U+202A..U+202E, etc.) que se pegan
+  // solos al copiar desde Word o PDF y hacen que dos altas idénticas a la vista no lo sean.
+  function limpiarInvisibles(v) {
+    return String(v == null ? '' : v).replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '');
+  }
+
+  const FORMATO_ALTA = /^[0-9]{6}-[0-9]{6}$/;
+
   async function verificarAltaExistente(valor) {
-    if (!valor || !valor.trim()) { setAltaExiste(false); return; }
+    const limpio = limpiarInvisibles(valor).trim();
+    if (limpio !== String(valor || '')) setAlta(limpio);
+    if (!limpio) { setAltaExiste(false); setAlta5005(null); return; }
     setVerificandoAlta(true);
     try {
-      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(valor.trim()));
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio));
       const data = await res.json();
       setAltaExiste(data.ok ? data.existe : false);
     } catch (err) {
       // si falla la verificación, no bloqueamos — el servidor la revisa de todas formas al guardar
     }
+    try {
+      const r2 = await fetch('/api/altas/verificar?alta=' + encodeURIComponent(limpio));
+      const d2 = await r2.json();
+      setAlta5005(d2 && d2.ok ? d2 : null);
+    } catch (err) {
+      setAlta5005(null);
+    }
     setVerificandoAlta(false);
+  }
+
+  // Trae del 5005 el importe y avisa si el proveedor elegido no corresponde
+  function usarDatos5005() {
+    if (!alta5005 || !alta5005.encontrada || !alta5005.candidatos.length) return;
+    const c = alta5005.candidatos[0];
+    const centavos = Math.round(Number(c.importe || 0) * 100);
+    formatearImporte(String(centavos));
+    if (c.grupo && c.grupo !== grupo) setGrupo(c.grupo);
+    if (c.numeroCatalogo) setEmpresaNumero(c.numeroCatalogo);
   }
 
   function formatearImporte(valorInput) {
@@ -858,12 +886,34 @@ async function cruzarCon5005() {
                   <label>Número de alta ⚠ crítico</label>
                   <input
                     value={alta}
-                    onChange={(e) => { setAlta(e.target.value); setAltaExiste(false); }}
+                    onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); }}
                     onBlur={(e) => verificarAltaExistente(e.target.value)}
                     placeholder="Ej. AL-2026-00981"
                   />
                   {verificandoAlta && <span className="hint muted">Verificando…</span>}
                   {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes — revisa si es duplicado</span>}
+                  {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
+                    <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos (ej. 118001-106261)</span>
+                  )}
+                  {alta5005 && alta5005.encontrada === false && FORMATO_ALTA.test(alta.trim()) && (
+                    <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta todavía no aparece en el 5005 — puedes guardar, pero revisa que esté bien escrita</span>
+                  )}
+                  {alta5005 && alta5005.encontrada && alta5005.candidatos.length > 0 && (
+                    <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 8, fontSize: 12.5 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>✓ Encontrada en el 5005 del IMSS</div>
+                      <div>Proveedor: <b>{alta5005.candidatos[0].empresa || ('No. ' + alta5005.candidatos[0].provNo)}</b>{alta5005.candidatos[0].grupo ? ' · ' + alta5005.candidatos[0].grupo : ''}</div>
+                      <div>Importe según el IMSS: <b>{Number(alta5005.candidatos[0].importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></div>
+                      {alta5005.candidatos[0].comprobante && <div>Ya tiene contra recibo: <b>{alta5005.candidatos[0].comprobante}</b></div>}
+                      {alta5005.ambigua && <div style={{ color: 'var(--amber)', marginTop: 4 }}>⚠ Esta alta aparece más de una vez en el 5005 (posible reúso entre ejercicios) — verifica antes de guardar</div>}
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={usarDatos5005}>Usar estos datos</button>
+                      {empresaObj && alta5005.candidatos[0].provNorm && String(empresaObj.numero).replace(/^0+/, '') !== alta5005.candidatos[0].provNorm && (
+                        <div style={{ color: 'var(--red)', marginTop: 6, fontWeight: 600 }}>✖ El proveedor que elegiste NO es el que el IMSS tiene para esta alta</div>
+                      )}
+                      {importeRaw > 0 && Math.abs(importeRaw - Number(alta5005.candidatos[0].importe || 0)) > 0.01 && (
+                        <div style={{ color: 'var(--red)', marginTop: 4, fontWeight: 600 }}>✖ El importe que capturaste no coincide con el del IMSS</div>
+                      )}
+                    </div>
+                  )}
                   <span className="hint">{altaHint}</span>
                 </div>
               </div>
@@ -874,7 +924,7 @@ async function cruzarCon5005() {
                   <option value="Mariano">Mariano</option>
                 </select>
               </div>
-              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste}>
+              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()))}>
                 {guardando ? 'Guardando…' : 'Guardar factura'}
               </button>
             </>
