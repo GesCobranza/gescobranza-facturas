@@ -301,7 +301,8 @@ export default function Home() {
   }
 
   function actualizarFilaLote(idx, campo, valor) {
-    setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, [campo]: valor } : f)));
+    const limpio = campo === 'alta' ? limpiarInvisibles(valor) : valor;
+    setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, [campo]: limpio, ...(campo === 'alta' ? { info5005: null } : {}) } : f)));
   }
 
   function formatearImporteLote(idx, valorInput) {
@@ -322,9 +323,10 @@ export default function Home() {
   }
 
   async function verificarAltaLoteExistente(idx, valor) {
-    if (!valor || !valor.trim()) return;
+    const limpio = limpiarInvisibles(valor).trim();
+    if (!limpio) return;
     try {
-      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(valor.trim()));
+      const res = await fetch('/api/facturas/existe?alta=' + encodeURIComponent(limpio));
       const data = await res.json();
       if (data.ok) {
         setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, existeEnServidor: data.existe } : f)));
@@ -332,11 +334,27 @@ export default function Home() {
     } catch (err) {
       // si falla, no bloqueamos aquí — el servidor lo revisa de nuevo al guardar
     }
+    try {
+      const r2 = await fetch('/api/altas/verificar?alta=' + encodeURIComponent(limpio));
+      const d2 = await r2.json();
+      setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, info5005: (d2 && d2.ok ? d2 : null) } : f)));
+    } catch (err) {
+      setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, info5005: null } : f)));
+    }
+  }
+
+  // Trae el importe del 5005 a un renglón del lote
+  function usarImporte5005Lote(idx) {
+    setLoteFilas((prev) => prev.map((f, i) => {
+      if (i !== idx || !f.info5005 || !f.info5005.encontrada || !f.info5005.candidatos.length) return f;
+      const valor = Number(f.info5005.candidatos[0].importe || 0);
+      return { ...f, importeRaw: valor, importeTexto: valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) };
+    }));
   }
 
   const loteTodoListo = loteFilas.length > 0
     && grupo && empresaObj && delegacion && pdf
-    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && validarAltaLote(f.alta).ok && !f.existeEnServidor);
+    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && FORMATO_ALTA.test(f.alta.trim()) && validarAltaLote(f.alta).ok && !f.existeEnServidor);
 
   const loteAltasDuplicadasEntreSi = (() => {
     const vistos = new Set();
@@ -970,8 +988,29 @@ async function cruzarCon5005() {
                                 </span>
                               )}
                               {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada antes</span>}
+                              {f.alta.trim() !== '' && !FORMATO_ALTA.test(f.alta.trim()) && (
+                                <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — 6 dígitos, guion, 6 dígitos</span>
+                              )}
+                              {f.info5005 && f.info5005.encontrada === false && FORMATO_ALTA.test(f.alta.trim()) && (
+                                <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Aún no aparece en el 5005</span>
+                              )}
+                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && (
+                                <span className="hint" style={{ color: 'var(--green)' }}>
+                                  ✓ IMSS: {Number(f.info5005.candidatos[0].importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                                  {f.info5005.candidatos[0].empresa ? ' · ' + f.info5005.candidatos[0].empresa : ''}
+                                </span>
+                              )}
+                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && empresaObj
+                                && String(empresaObj.numero).replace(/^0+/, '') !== f.info5005.candidatos[0].provNorm && (
+                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Esta alta es de OTRO proveedor</span>
+                              )}
                             </td>
-                            <td><input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} /></td>
+                            <td>
+                              <input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} />
+                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && Math.abs(Number(f.importeRaw || 0) - Number(f.info5005.candidatos[0].importe || 0)) > 0.01 && (
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, display: 'block' }} onClick={() => usarImporte5005Lote(idx)}>Usar el del IMSS</button>
+                              )}
+                            </td>
                             <td><input value={f.numFactura} onChange={(e) => actualizarFilaLote(idx, 'numFactura', e.target.value)} placeholder="Si es distinto al PDF" style={{ minWidth: 140 }} /></td>
                           </tr>
                         );
