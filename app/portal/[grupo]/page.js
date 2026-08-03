@@ -498,8 +498,12 @@ export default function PortalGrupo() {
           {!calCargando && calData && (
             <>
               <div className="kpi-stat-grid" style={{ marginBottom: 16 }}>
+                <div className="kpi-stat" style={{ background: Number(calData.total_confirmado) > 0 ? 'var(--green-soft)' : 'var(--card)', border: '1px solid var(--line)' }}>
+                  <div className="lbl" style={{ color: Number(calData.total_confirmado) > 0 ? 'var(--green)' : 'var(--text-soft)' }}>Pago confirmado</div>
+                  <div className="num" style={{ color: Number(calData.total_confirmado) > 0 ? 'var(--green)' : 'var(--navy)' }}>{mny(calData.total_confirmado)}</div>
+                </div>
                 <div className="kpi-stat" style={{ background: 'var(--card)', border: '1px solid var(--line)' }}>
-                  <div className="lbl" style={{ color: 'var(--text-soft)' }}>Por cobrar · próximas 4 semanas</div>
+                  <div className="lbl" style={{ color: 'var(--text-soft)' }}>Programado a pago · 4 semanas</div>
                   <div className="num" style={{ color: 'var(--navy)' }}>{mny(calData.total_proximo)}</div>
                 </div>
                 <div className="kpi-stat" style={{ background: Number(calData.total_vencido) > 0 ? 'var(--red-soft)' : 'var(--card)', border: '1px solid var(--line)' }}>
@@ -527,9 +531,30 @@ export default function PortalGrupo() {
                 </div>
               )}
 
+              {calData.confirmados && calData.confirmados.length > 0 && (
+                <div className="card">
+                  <h2>Pagos confirmados</h2>
+                  <p className="muted">El IMSS ya asentó estos pagos con fecha y referencia bancaria. Son depósitos comprometidos, aún por aplicarse.</p>
+                  <table>
+                    <thead><tr><th>Fecha de pago</th><th>Contra recibos</th><th>Facturas</th><th>Referencias</th><th>Importe</th></tr></thead>
+                    <tbody>
+                      {calData.confirmados.map((d) => (
+                        <tr key={d.fecha}>
+                          <td>{fmtF(d.fecha)}</td>
+                          <td>{d.contra_recibos}</td>
+                          <td>{d.facturas}</td>
+                          <td className="muted">{(d.referencias || []).join(', ')}</td>
+                          <td style={{ color: 'var(--green)' }}>{mny(d.importe_cr)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
               <div className="card">
                 <h2>Pagos programados</h2>
-                <p className="muted">Fechas en que el IMSS tiene programado depositar. Considera únicamente las facturas gestionadas por Ges Cobranza.</p>
+                <p className="muted">En cola de pago, sujetos a la programación del IMSS. Considera únicamente las facturas gestionadas por Ges Cobranza.</p>
                 {calData.proximos.length === 0 && <p className="muted">Sin pagos programados en las próximas 4 semanas.</p>}
                 {agruparPorSemana(calData.proximos).map((s) => (
                   <details key={s.clave} open>
