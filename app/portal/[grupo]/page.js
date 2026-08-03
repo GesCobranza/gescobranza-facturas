@@ -158,6 +158,23 @@ export default function PortalGrupo() {
     setExportando(false);
   }
 
+  function exportarVencidos() {
+    if (!calData || !calData.vencidos || calData.vencidos.length === 0) return;
+    const datos = calData.vencidos.map((v) => ({
+      'Contra recibo': v.comprobante,
+      'Fecha programada': fmtF(v.fecha),
+      'Días vencido': v.dias_vencido,
+      'Laboratorio': v.empresa || '',
+      'Delegación': v.delegacion || '',
+      'Facturas': v.facturas,
+      'Importe': Number(v.importe_cr || 0),
+    }));
+    const ws = XLSX.utils.json_to_sheet(datos);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Vencidos');
+    XLSX.writeFile(wb, `contra-recibos-vencidos-${grupo}.xlsx`);
+  }
+
   function selloFecha() {
     const a = new Date();
     const dd = (n) => String(n).padStart(2, '0');
@@ -518,13 +535,27 @@ export default function PortalGrupo() {
 
               {calData.vencidos && calData.vencidos.length > 0 && (
                 <div className="card" style={{ borderColor: 'var(--red)' }}>
-                  <h2 style={{ color: 'var(--red)' }}>Contra recibos vencidos</h2>
-                  <p className="muted">El IMSS programó estos pagos y aún no los ha realizado.</p>
-                  <table>
-                    <thead><tr><th>Fecha programada</th><th>Contra recibos</th><th>Facturas</th><th>Importe</th></tr></thead>
+                  <div className="toolbar" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h2 style={{ color: 'var(--red)', marginBottom: 2 }}>Contra recibos vencidos</h2>
+                      <p className="muted" style={{ margin: 0 }}>El IMSS programó estos pagos y aún no los ha realizado.</p>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" onClick={exportarVencidos}>Descargar Excel</button>
+                  </div>
+                  <table style={{ marginTop: 10 }}>
+                    <thead><tr><th>Contra recibo</th><th>Fecha programada</th><th>Días vencido</th><th>Laboratorio</th><th>Delegación</th><th>Facturas</th><th>Importe</th><th></th></tr></thead>
                     <tbody>
                       {calData.vencidos.map((d) => (
-                        <tr key={d.fecha}><td>{fmtF(d.fecha)}</td><td>{d.contra_recibos}</td><td>{d.facturas}</td><td>{mny(d.importe_cr)}</td></tr>
+                        <tr key={d.comprobante}>
+                          <td style={{ fontWeight: 600 }}>{d.comprobante}</td>
+                          <td>{fmtF(d.fecha)}</td>
+                          <td style={{ color: d.dias_vencido > 30 ? 'var(--red)' : 'var(--amber)', fontWeight: 600 }}>{d.dias_vencido}</td>
+                          <td>{d.empresa || ''}</td>
+                          <td className="muted">{d.delegacion || ''}</td>
+                          <td>{d.facturas}</td>
+                          <td>{mny(d.importe_cr)}</td>
+                          <td><a href="#" onClick={(e) => { e.preventDefault(); abrirContraRecibo(d.comprobante); }}>Ver</a></td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
