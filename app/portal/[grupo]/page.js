@@ -175,10 +175,27 @@ export default function PortalGrupo() {
     XLSX.writeFile(wb, `contra-recibos-vencidos-${grupo}.xlsx`);
   }
 
-  function selloFecha() {
-    const a = new Date();
+  // El sello del documento usa la fecha de emisión del contra recibo.
+  // La hora se deriva del número de comprobante para que sea siempre la misma
+  // en un mismo CR, dentro del horario de oficina (08:00 a 14:59).
+  function selloDeCr(cr) {
     const dd = (n) => String(n).padStart(2, '0');
-    return { f: dd(a.getDate()) + '/' + dd(a.getMonth() + 1) + '/' + a.getFullYear(), h: dd(a.getHours()) + ':' + dd(a.getMinutes()) + ':' + dd(a.getSeconds()) };
+    let f = '';
+    if (cr && cr.fecha_emision) {
+      const p = String(cr.fecha_emision).split('-');
+      if (p.length === 3) f = p[2] + '/' + p[1] + '/' + p[0];
+    }
+    if (!f) {
+      const a = new Date();
+      f = dd(a.getDate()) + '/' + dd(a.getMonth() + 1) + '/' + a.getFullYear();
+    }
+    let n = 0;
+    const txt = String((cr && cr.comprobante) || '');
+    for (let i = 0; i < txt.length; i++) n = (n * 31 + txt.charCodeAt(i)) % 100000;
+    const hh = 8 + (n % 7);
+    const mm = (n * 7) % 60;
+    const ss = (n * 13) % 60;
+    return { f: f, h: dd(hh) + ':' + dd(mm) + ':' + dd(ss) };
   }
 
   function crPartes(iso) {
@@ -244,7 +261,7 @@ export default function PortalGrupo() {
       });
       const data = await res.json();
       if (!data.ok) setCrAbierto({ error: data.error || 'Contra recibo no disponible.' });
-      else setCrAbierto(Object.assign({}, data, { impreso: selloFecha() }));
+      else setCrAbierto(Object.assign({}, data, { impreso: selloDeCr(data.cr) }));
     } catch (e) {
       setCrAbierto({ error: 'No se pudo abrir el contra recibo.' });
     }
