@@ -33,7 +33,7 @@ function aNum(v) {
 
 export default function CentroDeCargas() {
   const [archivos, setArchivos] = useState([]);
-  const [vaciarAntes, setVaciarAntes] = useState(false);
+  const [mostrarAvanzadas, setMostrarAvanzadas] = useState(false);
   const [trabajando, setTrabajando] = useState(false);
   const [bitacora, setBitacora] = useState([]);
 
@@ -117,7 +117,8 @@ export default function CentroDeCargas() {
       });
     }
 
-    return { fuente: fuente, filas: filas, nombreArchivo: nombreArchivo };
+    const provs = Array.from(new Set(filas.map((f) => f.prov_no_norm)));
+    return { fuente: fuente, filas: filas, nombreArchivo: nombreArchivo, provs: provs };
   }
 
   async function enviarBloques(filas) {
@@ -137,24 +138,30 @@ export default function CentroDeCargas() {
     return total;
   }
 
+  async function vaciarTodo() {
+    if (!window.confirm('Esto borra TODO el histórico de contra recibos, incluido lo pagado. ¿Continuar?')) return;
+    setTrabajando(true);
+    setBitacora([]);
+    try {
+      const res = await fetch('/api/cr-institucional', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accion: 'vaciar' }),
+      });
+      const json = await res.json();
+      log(json.ok ? 'Histórico borrado. Vuelve a cargar el 4004 desde enero.' : ('Error: ' + json.error), json.ok ? 'ok' : 'err');
+    } catch (e) {
+      log('Error: ' + (e.message || e), 'err');
+    }
+    setTrabajando(false);
+  }
+
   async function procesar() {
     if (archivos.length === 0) return;
     setTrabajando(true);
     setBitacora([]);
 
     try {
-      if (vaciarAntes) {
-        log('Vaciando la tabla antes de cargar...');
-        const res = await fetch('/api/cr-institucional', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accion: 'vaciar' }),
-        });
-        const json = await res.json();
-        if (!json.ok) throw new Error(json.error || 'No se pudo vaciar');
-        log('Tabla vaciada.', 'ok');
-      }
-
       let granTotal = 0;
       let cont1003 = 0;
       let cont4004 = 0;
@@ -167,6 +174,17 @@ export default function CentroDeCargas() {
           if (r.filas.length === 0) {
             log(f.name + ' — sin renglones válidos, se omite', 'warn');
             continue;
+          }
+          // Los pendientes (1003) se reemplazan completos por proveedor: un CR
+          // programado puede cancelarse o cambiar de fecha. Lo pagado nunca se borra.
+          if (r.fuente === '1003') {
+            for (const prov of r.provs) {
+              await fetch('/api/cr-institucional', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accion: 'limpiar_pendientes_proveedor', provNorm: prov }),
+              });
+            }
           }
           const guardadas = await enviarBloques(r.filas);
           granTotal += guardadas;
@@ -300,65 +318,9 @@ export default function CentroDeCargas() {
         Todos los reportes institucionales en un solo lugar. Cada bloque es independiente.
       </p>
 
-      <h2 style={{ fontSize: 16, color: NAVY, marginBottom: 4 }}>1 · Reportes 1003 y 4004</h2>
-      <p style={{ color: GRIS, fontSize: 13.5, marginTop: 0, marginBottom: 14 }}>
-        Detecta solo si cada archivo es 1003 (pendiente de pago) o 4004 (pagado).
-        Suelta los de todos los proveedores de una vez. Solo actualiza información de consulta — no modifica tus facturas.
-      </p>
-
-      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 22, background: '#fff' }}>
-        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 8 }}>
-          Archivos (.xls o .xlsx)
-        </label>
-        <input
-          type="file"
-          multiple
-          accept=".xls,.xlsx"
-          onChange={(e) => setArchivos(Array.from(e.target.files || []))}
-          disabled={trabajando}
-          style={{ fontSize: 14 }}
-        />
-        {archivos.length > 0 && (
-          <p style={{ fontSize: 13, color: GRIS, marginTop: 10 }}>
-            {archivos.length} archivo(s) seleccionado(s)
-          </p>
-        )}
-
-        <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input
-            type="checkbox"
-            id="vaciar"
-            checked={vaciarAntes}
-            onChange={(e) => setVaciarAntes(e.target.checked)}
-            disabled={trabajando}
-          />
-          <label htmlFor="vaciar" style={{ fontSize: 13, color: GRIS }}>
-            Vaciar la tabla antes de cargar (recarga total desde cero)
-          </label>
-        </div>
-
-        <button
-          onClick={procesar}
-          disabled={trabajando || archivos.length === 0}
-          style={{
-            marginTop: 20,
-            padding: '11px 22px',
-            border: 'none',
-            borderRadius: 7,
-            background: trabajando || archivos.length === 0 ? '#B9BCC2' : VERDE,
-            color: '#fff',
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: trabajando || archivos.length === 0 ? 'default' : 'pointer',
-          }}
-        >
-          {trabajando ? 'Procesando...' : 'Cargar reportes'}
-        </button>
-      </div>
-
-      <h2 style={{ fontSize: 16, color: NAVY, marginTop: 34, marginBottom: 4 }}>2 · Reporte 5005 y cruce</h2>
+      <h2 style={{ fontSize: 16, color: NAVY, marginBottom: 4 }}>1 · Reporte 5005 y cruce</h2>
       <p style={{ color: '#9A5B00', fontSize: 13.5, marginTop: 0, marginBottom: 14, background: '#FBF0DD', border: '1px solid #EFDCB3', borderRadius: 8, padding: '10px 13px' }}>
-        Atención: el cruce <b>modifica tus facturas</b> — las marca Con contra recibo. No se puede deshacer. Carga el archivo primero y cruza después.
+        Se corre primero: el 5005 es el único reporte que liga cada alta con su número de contra recibo. El cruce <b>modifica tus facturas</b> — las marca Con contra recibo y no se puede deshacer.
       </p>
 
       <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 22, background: '#fff' }}>
@@ -394,6 +356,69 @@ export default function CentroDeCargas() {
 
         {msg5005 && <p style={{ fontSize: 13, color: GRIS, marginTop: 14, fontFamily: 'monospace', lineHeight: 1.6 }}>{msg5005}</p>}
         {cruceMsg && <p style={{ fontSize: 13, color: NAVY, marginTop: 10, fontFamily: 'monospace', lineHeight: 1.6 }}>{cruceMsg}</p>}
+      </div>
+
+      <h2 style={{ fontSize: 16, color: NAVY, marginTop: 34, marginBottom: 4 }}>2 · Reportes 1003 y 4004</h2>
+      <p style={{ color: GRIS, fontSize: 13.5, marginTop: 0, marginBottom: 14 }}>
+        Se cargan después del cruce: le dan a cada contra recibo su fecha de emisión, pago programado, fecha de pago y referencia bancaria.
+        Detecta solo si cada archivo es 1003 (pendiente) o 4004 (pagado) — suelta los de todos los proveedores juntos. No modifica tus facturas.
+        <br /><b>1003:</b> siempre completo. <b>4004:</b> 15 días atrás y 45 adelante.
+      </p>
+
+      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 22, background: '#fff' }}>
+        <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 8 }}>
+          Archivos (.xls o .xlsx)
+        </label>
+        <input
+          type="file"
+          multiple
+          accept=".xls,.xlsx"
+          onChange={(e) => setArchivos(Array.from(e.target.files || []))}
+          disabled={trabajando}
+          style={{ fontSize: 14 }}
+        />
+        {archivos.length > 0 && (
+          <p style={{ fontSize: 13, color: GRIS, marginTop: 10 }}>
+            {archivos.length} archivo(s) seleccionado(s)
+          </p>
+        )}
+
+        <button
+          onClick={procesar}
+          disabled={trabajando || archivos.length === 0}
+          style={{
+            marginTop: 20,
+            padding: '11px 22px',
+            border: 'none',
+            borderRadius: 7,
+            background: trabajando || archivos.length === 0 ? '#B9BCC2' : VERDE,
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: trabajando || archivos.length === 0 ? 'default' : 'pointer',
+          }}
+        >
+          {trabajando ? 'Procesando...' : 'Cargar reportes'}
+        </button>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <button type="button" onClick={() => setMostrarAvanzadas(!mostrarAvanzadas)}
+          style={{ background: 'none', border: 'none', color: GRIS, fontSize: 12.5, cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+          {mostrarAvanzadas ? 'Ocultar opciones avanzadas' : 'Opciones avanzadas'}
+        </button>
+        {mostrarAvanzadas && (
+          <div style={{ marginTop: 10, padding: '12px 14px', background: '#FBF0DD', border: '1px solid #EFDCB3', borderRadius: 8 }}>
+            <p style={{ fontSize: 12.5, color: '#9A5B00', margin: '0 0 10px' }}>
+              Borra <b>todo</b> el histórico de contra recibos, incluido lo ya pagado. Úsalo solo si los datos se corrompieron:
+              tendrás que volver a cargar el 4004 desde enero.
+            </p>
+            <button type="button" onClick={vaciarTodo} disabled={trabajando}
+              style={{ padding: '8px 16px', border: 'none', borderRadius: 7, background: '#C23B3B', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              Borrar todo el histórico
+            </button>
+          </div>
+        )}
       </div>
 
       {bitacora.length > 0 && (
