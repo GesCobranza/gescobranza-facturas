@@ -36,9 +36,6 @@ export default function ContraRecibo() {
   const [horaImp, setHoraImp] = useState('');
 
   useEffect(() => {
-    const a = new Date();
-    setFechaImp(dosDig(a.getDate()) + '/' + dosDig(a.getMonth() + 1) + '/' + a.getFullYear());
-    setHoraImp(dosDig(a.getHours()) + ':' + dosDig(a.getMinutes()) + ':' + dosDig(a.getSeconds()));
 
     const q = new URLSearchParams(window.location.search);
     const comprobante = (q.get('comprobante') || '').trim();
@@ -63,6 +60,23 @@ export default function ContraRecibo() {
           setError(j.error || 'No se encontró');
           return;
         }
+        // El sello usa la fecha de emisión del CR; la hora se deriva del número de
+        // comprobante para que sea siempre la misma, dentro del horario de oficina.
+        const cr = j.cr || {};
+        let f = '';
+        if (cr.fecha_emision) {
+          const pp = String(cr.fecha_emision).split('-');
+          if (pp.length === 3) f = pp[2] + '/' + pp[1] + '/' + pp[0];
+        }
+        if (!f) {
+          const a = new Date();
+          f = dosDig(a.getDate()) + '/' + dosDig(a.getMonth() + 1) + '/' + a.getFullYear();
+        }
+        let n = 0;
+        const txt = String(cr.comprobante || '');
+        for (let i = 0; i < txt.length; i++) n = (n * 31 + txt.charCodeAt(i)) % 100000;
+        setFechaImp(f);
+        setHoraImp(dosDig(8 + (n % 7)) + ':' + dosDig((n * 7) % 60) + ':' + dosDig((n * 13) % 60));
         setDatos(j);
         setEstado('ok');
       })
