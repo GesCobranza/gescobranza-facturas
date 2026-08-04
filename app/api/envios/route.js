@@ -17,6 +17,7 @@ export async function GET(request) {
       .select('id, alta, grupo, empresa, importe, pdf, num_factura, fecha_captura')
       .eq('delegacion', delegacion)
       .eq('tiene_cr', false)
+      .eq('enviada_gestor', false)
       .is('envio_id', null)
       .order('alta')
       .limit(1000);
