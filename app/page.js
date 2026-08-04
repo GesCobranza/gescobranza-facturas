@@ -5,6 +5,12 @@ import { subirArchivoDirecto } from '../lib/supabaseClient';
 
 export default function Home() {
   const [tab, setTab] = useState('captura');
+
+  // Permite volver directo a una pestaña (ej. /?tab=gestores desde Registrar envío)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t) setTab(t);
+  }, []);
   const [catalogos, setCatalogos] = useState({ grupos: [], delegaciones: [] });
   const [cargando, setCargando] = useState(true);
   const [seleccionados, setSeleccionados] = useState(new Set());
@@ -1312,7 +1318,7 @@ async function cruzarCon5005() {
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', marginTop: 6 }}>{mmm(v.importe)}</div>
                   <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
-                  <a href={'/envios'} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, display: 'inline-block', marginTop: 6 }}>Registrar envío →</a>
+                  <a href={'/envios?delegacion=' + encodeURIComponent(v.delegacion)} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, display: 'inline-block', marginTop: 6 }}>Registrar envío →</a>
                 </div>
               ))}
             </div>
