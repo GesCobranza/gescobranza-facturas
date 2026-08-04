@@ -756,6 +756,17 @@ async function cruzarCon5005() {
     return { fondo: 'var(--green-soft)', borde: 'var(--green)', texto: 'var(--green)' };
   }
 
+  // Al elegir una delegación desde las tarjetas, baja al detalle para que se vea el efecto.
+  function filtrarPorDelegacion(deleg, tipoEnvio) {
+    setGFiltroDeleg(deleg);
+    setGFiltroEnvio(tipoEnvio);
+    setGPagina(1);
+    setTimeout(() => {
+      const el = document.getElementById('detalle-seguimiento');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+  }
+
   function mmm(n) {
     const v = Number(n || 0);
     if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + ' M';
@@ -1296,8 +1307,8 @@ async function cruzarCon5005() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
               {(verTodasPend ? pendOrdenadas : pendOrdenadas.slice(0, TARJETAS_VISIBLES)).map((v) => (
                 <div key={v.delegacion}
-                  style={{ background: 'var(--card)', border: '1px solid var(--line)', borderLeft: '3px solid var(--navy-soft)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
-                  onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('noenviada'); setGPagina(1); }}>
+                  style={{ background: 'var(--card)', border: gFiltroDeleg === v.delegacion && gFiltroEnvio === 'noenviada' ? '2px solid var(--navy)' : '1px solid var(--line)', borderLeft: '3px solid var(--navy-soft)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                  onClick={() => filtrarPorDelegacion(v.delegacion, 'noenviada')}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', marginTop: 6 }}>{mmm(v.importe)}</div>
                   <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
@@ -1321,8 +1332,8 @@ async function cruzarCon5005() {
                 const c = colorMeta(v.dias_max);
                 return (
                   <div key={v.delegacion}
-                    style={{ background: c.fondo, border: '1px solid var(--line)', borderLeft: '3px solid ' + c.borde, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
-                    onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('enviada'); setGPagina(1); }}>
+                    style={{ background: c.fondo, border: gFiltroDeleg === v.delegacion && gFiltroEnvio === 'enviada' ? '2px solid var(--navy)' : '1px solid var(--line)', borderLeft: '3px solid ' + c.borde, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                    onClick={() => filtrarPorDelegacion(v.delegacion, 'enviada')}>
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
                     <div style={{ fontSize: 17, fontWeight: 700, color: c.texto, marginTop: 6 }}>{mmm(v.importe)}</div>
                     <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
@@ -1344,7 +1355,7 @@ async function cruzarCon5005() {
 
           <div className="card">
             <div className="toolbar" style={{ justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }}>Enviadas — esperando contra recibo</h2>
+              <h2 style={{ margin: 0 }} id="detalle-seguimiento">Enviadas — esperando contra recibo</h2>
               <select value={agruparPor} onChange={(e) => setAgruparPor(e.target.value)}>
                 <option value="ninguno">Sin agrupar</option>
                 <option value="delegacion">Agrupar por delegación</option>
@@ -1352,6 +1363,13 @@ async function cruzarCon5005() {
               </select>
             </div>
             <p className="muted" style={{ marginBottom: 12 }}>Hasta las 500 más antiguas — si tienes más, resuélvelas por aquí primero.</p>
+            {gFiltroDeleg && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--navy)', color: '#fff', borderRadius: 20, padding: '5px 8px 5px 14px', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
+                Mostrando solo: {gFiltroDeleg}
+                <button onClick={() => { setGFiltroDeleg(''); setGFiltroEnvio(''); setGPagina(1); }}
+                  style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
+              </div>
+            )}
             {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
             {esperando.length > 0 && seleccionados.size > 0 && (
               <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
