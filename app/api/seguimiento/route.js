@@ -31,13 +31,17 @@ export async function GET(request) {
   const { data: espResumen, error: errResumen } = await supabase.rpc('resumen_esperando_cr');
   if (errResumen) return NextResponse.json({ ok: false, error: errResumen.message }, { status: 500 });
 
-  const { data: esperandoRaw, error: errEsp } = await supabase
+  // Respeta el filtro de delegación: sin esto la lista mostraba facturas de otras
+  // delegaciones aunque la pantalla dijera estar filtrada.
+  let qEsperando = supabase
     .from('facturas')
     .select('*')
     .eq('tiene_cr', false)
     .eq('enviada_gestor', true)
     .order('fecha_envio', { ascending: true })
     .limit(500);
+  if (delegacion) qEsperando = qEsperando.eq('delegacion', delegacion);
+  const { data: esperandoRaw, error: errEsp } = await qEsperando;
   if (errEsp) return NextResponse.json({ ok: false, error: errEsp.message }, { status: 500 });
   const esperando = await agregarConteoComentarios(supabase, esperandoRaw);
 
