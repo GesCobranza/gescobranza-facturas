@@ -26,6 +26,11 @@ export async function GET(request) {
   const { data: dash, error: errDash } = await supabase.rpc('seguimiento_dashboard');
   if (errDash) return NextResponse.json({ ok: false, error: errDash.message }, { status: 500 });
 
+  // Resumen de las enviadas sin límite de filas: el bloque `esperando` de abajo
+  // solo trae 500, así que los totales por delegación se calculan en la base.
+  const { data: espResumen, error: errResumen } = await supabase.rpc('resumen_esperando_cr');
+  if (errResumen) return NextResponse.json({ ok: false, error: errResumen.message }, { status: 500 });
+
   const { data: esperandoRaw, error: errEsp } = await supabase
     .from('facturas')
     .select('*')
@@ -52,6 +57,7 @@ export async function GET(request) {
   return NextResponse.json({
     ok: true,
     resumenPorDelegacion: dash.resumen_por_delegacion,
+    resumenEsperando: espResumen || [],
     esperando,
     filasGestores,
     totalFilasGestores: count,
