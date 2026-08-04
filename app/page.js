@@ -34,7 +34,9 @@ export default function Home() {
 
   // ---- Seguimiento (gestores) ----
   const [gPagina, setGPagina] = useState(1);
-  const [seguimientoData, setSeguimientoData] = useState({ resumenPorDelegacion: [], esperando: [], filasGestores: [], totalFilasGestores: 0 });
+  const [seguimientoData, setSeguimientoData] = useState({ resumenPorDelegacion: [], resumenEsperando: [], esperando: [], filasGestores: [], totalFilasGestores: 0 });
+  const [verTodasPend, setVerTodasPend] = useState(false);
+  const [verTodasEsp, setVerTodasEsp] = useState(false);
   const [gCargando, setGCargando] = useState(false);
   const GESTORES_POR_PAGINA = 50;
 
@@ -742,6 +744,24 @@ async function cruzarCon5005() {
         }, {})
       ).sort((a, b) => b[1].length - a[1].length);
   const maxPend = Math.max(1, ...(seguimientoData.resumenPorDelegacion || []).map((v) => v.n));
+  const pendOrdenadas = [...(seguimientoData.resumenPorDelegacion || [])].sort((a, b) => Number(b.importe || 0) - Number(a.importe || 0));
+  const espOrdenadas = [...(seguimientoData.resumenEsperando || [])].sort((a, b) => Number(b.importe_fuera_meta || 0) - Number(a.importe_fuera_meta || 0));
+  const TARJETAS_VISIBLES = 12;
+
+  // Meta: 6 días desde el envío. El color solo mira los días de espera.
+  function colorMeta(dias) {
+    if (dias == null) return { fondo: 'var(--card)', borde: 'var(--line)', texto: 'var(--navy)' };
+    if (dias > 12) return { fondo: 'var(--red-soft)', borde: 'var(--red)', texto: 'var(--red)' };
+    if (dias > 6) return { fondo: 'var(--amber-soft)', borde: 'var(--amber)', texto: 'var(--amber)' };
+    return { fondo: 'var(--green-soft)', borde: 'var(--green)', texto: 'var(--green)' };
+  }
+
+  function mmm(n) {
+    const v = Number(n || 0);
+    if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + ' M';
+    if (v >= 1000) return '$' + Math.round(v / 1000) + ' mil';
+    return '$' + v.toFixed(0);
+  }
 
   function filaEsperando(f) {
     return (
@@ -1270,17 +1290,56 @@ async function cruzarCon5005() {
       {tab === 'gestores' && (
         <>
           <div className="card">
-            <h2>Pendientes por enviar, por delegación</h2>
-            <p className="muted" style={{ marginBottom: 12 }}>Sin contra recibo y aún no enviadas a ningún gestor.</p>
-            {(seguimientoData.resumenPorDelegacion || []).length === 0 && <p className="muted">No hay pendientes por enviar.</p>}
-            {(seguimientoData.resumenPorDelegacion || []).map((v) => (
-              <div className="bar-row" key={v.delegacion} style={{ cursor: 'pointer' }} onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('noenviada'); setGPagina(1); }}>
-                <div className="bar-label" style={{ width: 220 }}>{v.delegacion}</div>
-                <div className="bar-track"><div className="bar-fill" style={{ width: (v.n / maxPend) * 100 + '%' }} /></div>
-                <div className="bar-val">{v.n}</div>
-                <div className="muted" style={{ width: 120, textAlign: 'right' }}>${Number(v.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-              </div>
-            ))}
+            <h2>Pendientes por enviar</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Capturadas, sin contra recibo y aún sin envío registrado. Ordenadas por importe.</p>
+            {pendOrdenadas.length === 0 && <p className="muted">No hay pendientes por enviar.</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+              {(verTodasPend ? pendOrdenadas : pendOrdenadas.slice(0, TARJETAS_VISIBLES)).map((v) => (
+                <div key={v.delegacion}
+                  style={{ background: 'var(--card)', border: '1px solid var(--line)', borderLeft: '3px solid var(--navy-soft)', borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                  onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('noenviada'); setGPagina(1); }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
+                  <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', marginTop: 6 }}>{mmm(v.importe)}</div>
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
+                  <a href={'/envios'} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, display: 'inline-block', marginTop: 6 }}>Registrar envío →</a>
+                </div>
+              ))}
+            </div>
+            {pendOrdenadas.length > TARJETAS_VISIBLES && (
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setVerTodasPend(!verTodasPend)}>
+                {verTodasPend ? 'Ver solo las 12 mayores' : 'Ver las ' + (pendOrdenadas.length - TARJETAS_VISIBLES) + ' restantes'}
+              </button>
+            )}
+          </div>
+
+          <div className="card">
+            <h2>Esperando contra recibo, por delegación</h2>
+            <p className="muted" style={{ marginBottom: 12 }}>Ya enviadas y sin respuesta del IMSS. Ordenadas por importe fuera de la meta de 6 días.</p>
+            {espOrdenadas.length === 0 && <p className="muted">No hay facturas esperando respuesta.</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+              {(verTodasEsp ? espOrdenadas : espOrdenadas.slice(0, TARJETAS_VISIBLES)).map((v) => {
+                const c = colorMeta(v.dias_max);
+                return (
+                  <div key={v.delegacion}
+                    style={{ background: c.fondo, border: '1px solid var(--line)', borderLeft: '3px solid ' + c.borde, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                    onClick={() => { setGFiltroDeleg(v.delegacion); setGFiltroEnvio('enviada'); setGPagina(1); }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: c.texto, marginTop: 6 }}>{mmm(v.importe)}</div>
+                    <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
+                      {v.n} factura(s) · <b style={{ color: c.texto }}>{v.dias_max} días</b>
+                    </div>
+                    {v.fuera_meta > 0 && (
+                      <div style={{ fontSize: 11.5, color: c.texto, marginTop: 3 }}>{v.fuera_meta} fuera de meta · {mmm(v.importe_fuera_meta)}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {espOrdenadas.length > TARJETAS_VISIBLES && (
+              <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setVerTodasEsp(!verTodasEsp)}>
+                {verTodasEsp ? 'Ver solo las 12 mayores' : 'Ver las ' + (espOrdenadas.length - TARJETAS_VISIBLES) + ' restantes'}
+              </button>
+            )}
           </div>
 
           <div className="card">
