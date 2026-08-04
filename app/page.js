@@ -815,21 +815,21 @@ async function cruzarCon5005() {
         ['Total de facturas:', d.total],
         ['Importe total:', d.importe],
         [],
-        ['ALTA', 'FACTURA', 'LABORATORIO', 'GRUPO', 'GUÍA', 'FECHA DE ENVÍO', 'DÍAS', 'IMPORTE'],
+        ['ALTA', 'FACTURA', 'LABORATORIO', 'GUÍA', 'FECHA DE ENVÍO', 'DÍAS', 'IMPORTE'],
       ];
       d.facturas.forEach((f) => {
         const dias = f.fecha_envio ? Math.round((hoy - new Date(f.fecha_envio + 'T12:00:00')) / 86400000) : '';
-        enc.push([f.alta, f.num_factura, f.empresa, f.grupo, f.guia || 'sin guía', fmtD(f.fecha_envio), dias, f.importe]);
+        enc.push([f.alta, f.num_factura, f.empresa, f.guia || 'sin guía', fmtD(f.fecha_envio), dias, f.importe]);
       });
 
       const ws = XLSX.utils.aoa_to_sheet(enc);
-      ws['!cols'] = [{ wch: 17 }, { wch: 15 }, { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 15 }, { wch: 8 }, { wch: 16 }];
+      ws['!cols'] = [{ wch: 17 }, { wch: 15 }, { wch: 40 }, { wch: 16 }, { wch: 15 }, { wch: 8 }, { wch: 16 }];
       ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
       ];
       if (ws['B7']) ws['B7'].z = '$#,##0.00';
-      for (let i = 10; i <= enc.length; i++) { if (ws['H' + i]) ws['H' + i].z = '$#,##0.00'; }
+      for (let i = 10; i <= enc.length; i++) { if (ws['G' + i]) ws['G' + i].z = '$#,##0.00'; }
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Pendientes');
       XLSX.writeFile(wb, 'reclamo-' + deleg.replace(/[^A-Za-z0-9]+/g, '-') + '.xlsx');
