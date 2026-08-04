@@ -834,6 +834,7 @@ async function cruzarCon5005() {
         <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
         <button className={tab === 'gestores' ? 'active' : ''} onClick={() => setTab('gestores')}>Seguimiento Envío</button>
         <a href="/cr-institucional" style={{ padding: '9px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13, color: 'var(--text-soft)', textDecoration: 'none' }}>Centro de Cargas</a>
+        <a href="/envios" style={{ padding: '9px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13, color: 'var(--text-soft)', textDecoration: 'none' }}>Registrar envío</a>
         <button className={tab === 'catalogos' ? 'active' : ''} onClick={() => setTab('catalogos')}>Catálogos</button>
         <a href="/documentos" style={{ padding: '9px 16px', borderRadius: 8, fontWeight: 600, fontSize: 13, color: 'var(--text-soft)', textDecoration: 'none' }}>Carga de PDFs</a>
       </nav>
