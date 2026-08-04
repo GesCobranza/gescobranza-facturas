@@ -45,6 +45,13 @@ export async function POST(request) {
     if (!delegacion || !fechaEnvio) {
       return NextResponse.json({ ok: false, error: 'Falta la delegación o la fecha de envío.' }, { status: 400 });
     }
+    // La guía es la prueba de entrega: sin ella el envío no sirve para reclamar.
+    if (!guia) {
+      return NextResponse.json({ ok: false, error: 'Falta el número de guía.' }, { status: 400 });
+    }
+    if (!enviadoPor) {
+      return NextResponse.json({ ok: false, error: 'Falta indicar quién envía el paquete.' }, { status: 400 });
+    }
     if (ids.length === 0) {
       return NextResponse.json({ ok: false, error: 'No seleccionaste ninguna factura.' }, { status: 400 });
     }
@@ -54,11 +61,11 @@ export async function POST(request) {
     const { data: envio, error: errEnvio } = await supabase
       .from('envios')
       .insert({
-        guia: guia || null,
+        guia: guia,
         paqueteria: 'Paquetexpress',
         delegacion: delegacion,
         fecha_envio: fechaEnvio,
-        enviado_por: enviadoPor || null,
+        enviado_por: enviadoPor,
         notas: notas || null,
       })
       .select('id')
