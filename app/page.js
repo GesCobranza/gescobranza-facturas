@@ -762,6 +762,85 @@ async function cruzarCon5005() {
     return { fondo: 'var(--green-soft)', borde: 'var(--green)', texto: 'var(--green)' };
   }
 
+  const [reclamando, setReclamando] = useState('');
+
+  // Arma el reclamo de una delegación: copia el correo al portapapeles y baja el Excel.
+  async function generarReclamo(deleg) {
+    setReclamando(deleg);
+    try {
+      const res = await fetch('/api/reclamo?delegacion=' + encodeURIComponent(deleg));
+      const d = await res.json();
+      if (!d.ok || d.total === 0) {
+        alert(d.error || 'No hay facturas pendientes en esta delegación.');
+        setReclamando('');
+        return;
+      }
+
+      const fmtD = (iso) => {
+        if (!iso) return 'sin fecha';
+        const x = String(iso).split('-');
+        return x.length === 3 ? x[2] + '/' + x[1] + '/' + x[0] : String(iso);
+      };
+      const mnyTxt = (n) => '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const hoy = new Date();
+      const dd = (n) => String(n).padStart(2, '0');
+      const fechaHoy = dd(hoy.getDate()) + '/' + dd(hoy.getMonth() + 1) + '/' + hoy.getFullYear();
+
+      const lineas = d.paquetes.map((g) => {
+        const dias = g.fecha_envio ? Math.round((hoy - new Date(g.fecha_envio + 'T12:00:00')) / 86400000) : null;
+        return (g.guia ? 'Guía ' + g.guia : 'Envío sin guía registrada')
+          + ' — entregada ' + fmtD(g.fecha_envio)
+          + ' — ' + g.facturas + ' facturas — ' + mnyTxt(g.importe)
+          + (dias != null ? ' — ' + dias + ' días' : '');
+      });
+
+      const correo =
+        'Jefe de Oficina de Trámite de Erogaciones\n' + deleg + '\n\n' +
+        'C.c.p. Jefe de Departamento de Presupuesto, Contabilidad y Erogaciones\n\nPresente.\n\n' +
+        'Por este medio solicito su apoyo para conocer el estatus de la documentación entregada en la ' + deleg + ', pendiente de emisión de contra recibo:\n\n' +
+        lineas.join('\n') + '\n\n' +
+        'Total: ' + d.total + ' facturas — ' + mnyTxt(d.importe) + '\n\n' +
+        'Anexo al presente el detalle por número de alta, factura, proveedor e importe.\n\n' +
+        'Si existiera alguna observación sobre la documentación entregada, agradeceré me lo indiquen para atenderla de inmediato.\n\n' +
+        'Quedo atento a sus comentarios.\n\nGestión Especializada en Cobranza\natencion@gescobranza.com · 56 4734 7117';
+
+      try { await navigator.clipboard.writeText(correo); } catch (err) { /* si el navegador lo bloquea, el Excel igual se descarga */ }
+
+      const enc = [
+        ['GESTIÓN ESPECIALIZADA EN COBRANZA'],
+        ['Relación de documentación pendiente de contra recibo'],
+        [],
+        ['Delegación:', deleg],
+        ['Fecha de corte:', fechaHoy],
+        ['Total de facturas:', d.total],
+        ['Importe total:', d.importe],
+        [],
+        ['ALTA', 'FACTURA', 'LABORATORIO', 'GRUPO', 'GUÍA', 'FECHA DE ENVÍO', 'DÍAS', 'IMPORTE'],
+      ];
+      d.facturas.forEach((f) => {
+        const dias = f.fecha_envio ? Math.round((hoy - new Date(f.fecha_envio + 'T12:00:00')) / 86400000) : '';
+        enc.push([f.alta, f.num_factura, f.empresa, f.grupo, f.guia || 'sin guía', fmtD(f.fecha_envio), dias, f.importe]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(enc);
+      ws['!cols'] = [{ wch: 17 }, { wch: 15 }, { wch: 38 }, { wch: 12 }, { wch: 16 }, { wch: 15 }, { wch: 8 }, { wch: 16 }];
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+      ];
+      if (ws['B7']) ws['B7'].z = '$#,##0.00';
+      for (let i = 10; i <= enc.length; i++) { if (ws['H' + i]) ws['H' + i].z = '$#,##0.00'; }
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Pendientes');
+      XLSX.writeFile(wb, 'reclamo-' + deleg.replace(/[^A-Za-z0-9]+/g, '-') + '.xlsx');
+
+      alert('Correo copiado al portapapeles y Excel descargado.\n\nPégalo en tu correo y adjunta el archivo.');
+    } catch (e) {
+      alert('No se pudo generar el reclamo: ' + (e.message || e));
+    }
+    setReclamando('');
+  }
+
   // Al elegir una delegación desde las tarjetas, baja al detalle para que se vea el efecto.
   function filtrarPorDelegacion(deleg, tipoEnvio) {
     setGFiltroDeleg(deleg);
@@ -1348,6 +1427,11 @@ async function cruzarCon5005() {
                     {v.fuera_meta > 0 && (
                       <div style={{ fontSize: 11.5, color: c.texto, marginTop: 3 }}>{v.fuera_meta} fuera de meta · {mmm(v.importe_fuera_meta)}</div>
                     )}
+                    <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, fontSize: 11.5, padding: '4px 10px' }}
+                      disabled={reclamando === v.delegacion}
+                      onClick={(e) => { e.stopPropagation(); generarReclamo(v.delegacion); }}>
+                      {reclamando === v.delegacion ? 'Generando…' : '✉ Reclamar'}
+                    </button>
                   </div>
                 );
               })}
@@ -1360,81 +1444,7 @@ async function cruzarCon5005() {
           </div>
 
           <div className="card">
-            <div className="toolbar" style={{ justifyContent: 'space-between' }}>
-              <h2 style={{ margin: 0 }} id="detalle-seguimiento">Enviadas — esperando contra recibo</h2>
-              <select value={agruparPor} onChange={(e) => setAgruparPor(e.target.value)}>
-                <option value="ninguno">Sin agrupar</option>
-                <option value="delegacion">Agrupar por delegación</option>
-                <option value="grupo">Agrupar por grupo</option>
-              </select>
-            </div>
-            <p className="muted" style={{ marginBottom: 12 }}>Hasta las 500 más antiguas — si tienes más, resuélvelas por aquí primero.</p>
-            {gFiltroDeleg && (
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--navy)', color: '#fff', borderRadius: 20, padding: '5px 8px 5px 14px', fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>
-                Mostrando solo: {gFiltroDeleg}
-                <button onClick={() => { setGFiltroDeleg(''); setGFiltroEnvio(''); setGPagina(1); }}
-                  style={{ background: 'rgba(255,255,255,.2)', border: 'none', color: '#fff', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: 0 }}>×</button>
-              </div>
-            )}
-            {esperando.length === 0 && <p className="muted">No hay facturas esperando respuesta ahora mismo.</p>}
-            {esperando.length > 0 && seleccionados.size > 0 && (
-              <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                <span>{seleccionados.size} seleccionada(s) · Suma: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-                <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
-              </div>
-            )}
-            {comprobantePanelAbierto && (
-              <div className="card" style={{ border: '2px solid var(--green)', margin: '0 0 12px' }}>
-                <h2>Adjuntar comprobante de contra recibo</h2>
-                <p className="muted" style={{ marginBottom: 12 }}>
-                  Esto marca las {seleccionados.size} facturas seleccionadas como <b>Con CR</b> de inmediato — no espera al Cruce 5005.
-                </p>
-                <div className="alert ok" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>
-                  Suma seleccionada: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                  <span className="muted" style={{ fontWeight: 400, fontSize: 13, display: 'block', marginTop: 2 }}>
-                    Compárala contra el importe total que trae el CR físico antes de subir.
-                  </span>
-                </div>
-                <div className="field" style={{ marginBottom: 12 }}>
-                  <label>Archivo del comprobante (foto o escaneo)</label>
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setComprobanteArchivo(e.target.files[0] || null)} />
-                </div>
-                <div className="field" style={{ maxWidth: 260, marginBottom: 12 }}>
-                  <label>Número de comprobante (opcional)</label>
-                  <input value={comprobanteNumero} onChange={(e) => setComprobanteNumero(e.target.value)} placeholder="Si lo tienes a la mano" />
-                </div>
-                {comprobanteMensaje && <div className="alert error">{comprobanteMensaje}</div>}
-                <button className="btn btn-primary" onClick={subirComprobante} disabled={comprobanteSubiendo || !comprobanteArchivo}>
-                  {comprobanteSubiendo ? 'Subiendo…' : 'Guardar y marcar Con CR'}
-                </button>{' '}
-                <button className="btn btn-ghost" onClick={() => setComprobantePanelAbierto(false)}>Cancelar</button>
-              </div>
-            )}
-            {esperando.length > 0 && (
-              agruparPor === 'ninguno' ? (
-                <table>
-                  <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
-                  <tbody>{esperando.map((f) => filaEsperando(f))}</tbody>
-                </table>
-              ) : (
-                gruposEsperando.map(([nombreGrupo, filas]) => (
-                  <details key={nombreGrupo} open style={{ marginBottom: 10 }}>
-                    <summary style={{ cursor: 'pointer', fontWeight: 600, padding: '8px 0', color: 'var(--navy)' }}>
-                      {nombreGrupo || '(sin dato)'} — {filas.length} factura{filas.length !== 1 ? 's' : ''}
-                    </summary>
-                    <table>
-                      <thead><tr><th></th><th>Alta</th><th>Empresa</th><th>PDF / Susceptible</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Días esperando</th><th>Comentarios</th></tr></thead>
-                      <tbody>{filas.map((f) => filaEsperando(f))}</tbody>
-                    </table>
-                  </details>
-                ))
-              )
-            )}
-          </div>
-
-          <div className="card">
-            <h2>Detalle y marcar envío</h2>
+            <h2 id="detalle-seguimiento">Detalle y marcar envío</h2>
             <div className="toolbar">
               <select value={gFiltroDeleg} onChange={(e) => { setGFiltroDeleg(e.target.value); setGPagina(1); }}>
                 <option value="">Todas las delegaciones</option>
