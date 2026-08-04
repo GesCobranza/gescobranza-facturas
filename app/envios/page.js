@@ -64,6 +64,14 @@ export default function RegistrarEnvio() {
   const grupos = new Set(elegidas.map((f) => f.grupo)).size;
   const todas = facturas.length > 0 && elegidas.length === facturas.length;
 
+  const faltantes = [];
+  if (!delegacion) faltantes.push('la delegación');
+  if (!guia.trim()) faltantes.push('el número de guía');
+  if (!fechaEnvio) faltantes.push('la fecha de envío');
+  if (!enviadoPor) faltantes.push('quién lo envía');
+  if (elegidas.length === 0) faltantes.push('al menos una factura');
+  const listo = faltantes.length === 0;
+
   function alternarTodas() {
     const sel = {};
     if (!todas) facturas.forEach((f) => { sel[f.id] = true; });
@@ -71,7 +79,7 @@ export default function RegistrarEnvio() {
   }
 
   async function registrar() {
-    if (elegidas.length === 0) return;
+    if (!listo) return;
     setGuardando(true);
     setMensaje(null);
     try {
@@ -131,7 +139,7 @@ export default function RegistrarEnvio() {
           </div>
           <div>
             <label style={etiqueta}>No. de guía</label>
-            <input value={guia} onChange={(e) => setGuia(e.target.value)} placeholder="Ej. 7749208311" style={campo} />
+            <input value={guia} onChange={(e) => setGuia(e.target.value)} placeholder="Ej. 7749208311" style={{ ...campo, borderColor: guia.trim() ? undefined : '#E0A6A6' }} />
           </div>
           <div>
             <label style={etiqueta}>Fecha de envío</label>
@@ -139,7 +147,7 @@ export default function RegistrarEnvio() {
           </div>
           <div>
             <label style={etiqueta}>Enviado por</label>
-            <select value={enviadoPor} onChange={(e) => setEnviadoPor(e.target.value)} style={campo}>
+            <select value={enviadoPor} onChange={(e) => setEnviadoPor(e.target.value)} style={{ ...campo, borderColor: enviadoPor ? undefined : '#E0A6A6' }}>
               <option value="">— quién lo envía —</option>
               <option value="Gabriel">Gabriel</option>
               <option value="Sophie">Sophie</option>
@@ -215,15 +223,20 @@ export default function RegistrarEnvio() {
               <span style={{ fontSize: 13.5, color: GRIS }}>
                 {elegidas.length} seleccionadas · {labs} laboratorio(s) · {grupos} grupo(s) · <b style={{ color: NAVY }}>{mny(total)}</b>
               </span>
-              <button onClick={registrar} disabled={guardando || elegidas.length === 0 || !delegacion}
-                style={{
-                  padding: '11px 22px', border: 'none', borderRadius: 7,
-                  background: guardando || elegidas.length === 0 ? '#B9BCC2' : VERDE,
-                  color: '#fff', fontSize: 14, fontWeight: 600,
-                  cursor: guardando || elegidas.length === 0 ? 'default' : 'pointer',
-                }}>
-                {guardando ? 'Registrando…' : 'Registrar envío'}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                {!listo && (
+                  <span style={{ fontSize: 12.5, color: '#B8791A' }}>Falta capturar: {faltantes.join(', ')}</span>
+                )}
+                <button onClick={registrar} disabled={guardando || !listo}
+                  style={{
+                    padding: '11px 22px', border: 'none', borderRadius: 7,
+                    background: guardando || !listo ? '#B9BCC2' : VERDE,
+                    color: '#fff', fontSize: 14, fontWeight: 600,
+                    cursor: guardando || !listo ? 'default' : 'pointer',
+                  }}>
+                  {guardando ? 'Registrando…' : 'Registrar envío'}
+                </button>
+              </div>
             </div>
           </>
         )}
