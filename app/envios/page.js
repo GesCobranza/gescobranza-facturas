@@ -35,6 +35,10 @@ export default function RegistrarEnvio() {
       .then((r) => r.json())
       .then((d) => setDelegaciones(d.delegaciones || []))
       .catch(() => setDelegaciones([]));
+    // Si se llegó desde Seguimiento Envío, la delegación viene en la liga.
+    const q = new URLSearchParams(window.location.search);
+    const desdeLiga = q.get('delegacion');
+    if (desdeLiga) setDelegacion(desdeLiga);
   }, []);
 
   useEffect(() => {
@@ -108,7 +112,7 @@ export default function RegistrarEnvio() {
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '28px 20px 80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <a href="/" className="btn btn-ghost btn-sm" style={{ display: 'inline-block', marginBottom: 16, textDecoration: 'none' }}>← Regresar al menú principal</a>
+      <a href="/?tab=gestores" className="btn btn-ghost btn-sm" style={{ display: 'inline-block', marginBottom: 16, textDecoration: 'none' }}>← Regresar a Seguimiento Envío</a>
 
       <h1 style={{ fontSize: 22, color: NAVY, marginBottom: 4 }}>Registrar envío por paquetería</h1>
       <p style={{ color: GRIS, fontSize: 14, marginTop: 0, marginBottom: 24 }}>
