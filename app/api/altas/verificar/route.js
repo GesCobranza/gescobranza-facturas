@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+// Quita caracteres invisibles que se pegan al copiar desde Word o PDF
 function limpiar(v) {
   return String(v == null ? '' : v)
     .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
@@ -23,49 +24,68 @@ export async function GET(request) {
     }
 
     const formatoOk = /^[0-9]{6}-[0-9]{6}$/.test(alta);
-
     const supabase = getSupabaseAdmin();
 
-    const { data, error } = await supabase
+    // El 5005 es la fuente: dice el proveedor, el importe y la unidad de cada alta
+    const { data: filas5005, error: err5005 } = await supabase
       .from('raw_5005')
-      .select('alta, proveedor, importe, comprobante')
+      .select('alta, proveedor, importe, comprobante, un_ap')
       .eq('alta', alta)
-      .limit(10);
+      .limit(20);
 
-    if (error) throw error;
+    if (err5005) throw err5005;
 
-    let filas = data || [];
-
-    if (filas.length === 0) {
+    let crudas = filas5005 || [];
+    if (crudas.length === 0) {
       const { data: d2 } = await supabase
         .from('raw_5005')
-        .select('alta, proveedor, importe, comprobante')
+        .select('alta, proveedor, importe, comprobante, un_ap')
         .ilike('alta', '%' + alta.replace(/^0+/, ''))
-        .limit(10);
-      filas = (d2 || []).filter((f) => norm(f.alta) === norm(alta));
+        .limit(20);
+      crudas = (d2 || []).filter((f) => norm(f.alta) === norm(alta));
     }
 
-    if (filas.length === 0) {
+    if (crudas.length === 0) {
       return NextResponse.json({ ok: true, formatoOk, encontrada: false, candidatos: [] });
     }
 
+    const [{ data: empresas }, { data: delegs }] = await Promise.all([
+      supabase.from('catalogo_empresas').select('numero, nombre, grupo').limit(2000),
+      supabase.from('catalogo_delegaciones').select('nombre, un_imss').limit(200),
+    ]);
+
+    // Una delegación puede cubrir varias unidades (ej. "35,36")
+    function delegacionDe(unAp) {
+      const u = norm(unAp);
+      const lista = delegs || [];
+      for (const d of lista) {
+        const partes = String(d.un_imss || '').split(',').map((x) => norm(x));
+        if (partes.indexOf(u) !== -1) return d.nombre;
+      }
+      return null;
+    }
+
+    // El IMSS reutiliza altas entre ejercicios, así que puede haber varios candidatos
+    const vistos = {};
     const candidatos = [];
-    for (const f of filas) {
+    for (const f of crudas) {
       const provNorm = norm(f.proveedor);
-      const { data: emp } = await supabase
-        .from('catalogo_empresas')
-        .select('numero, nombre, grupo')
-        .limit(1000);
-      const match = (emp || []).find((e) => norm(e.numero) === provNorm);
+      const clave = provNorm + '|' + norm(f.un_ap) + '|' + Number(f.importe || 0).toFixed(2);
+      if (vistos[clave]) continue;
+      vistos[clave] = true;
+
+      const emp = (empresas || []).find((e) => norm(e.numero) === provNorm);
       candidatos.push({
         alta: f.alta,
         provNo: f.proveedor,
         provNorm: provNorm,
-        importe: f.importe,
+        importe: Number(f.importe || 0),
         comprobante: f.comprobante || '',
-        empresa: match ? match.nombre : null,
-        grupo: match ? match.grupo : null,
-        numeroCatalogo: match ? match.numero : null,
+        unAp: f.un_ap || '',
+        delegacion: delegacionDe(f.un_ap),
+        empresa: emp ? emp.nombre : null,
+        grupo: emp ? emp.grupo : null,
+        numeroCatalogo: emp ? emp.numero : null,
       });
     }
 
