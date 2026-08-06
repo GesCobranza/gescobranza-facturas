@@ -228,7 +228,7 @@ export default function CentroDeCargas() {
         const hoja = wb.Sheets[wb.SheetNames[0]];
         const filasCrudas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: '' });
 
-        let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1;
+        let idxHeader = -1, colProv = -1, colAlta = -1, colImporte = -1, colComp = -1, colUn = -1;
         for (let i = 0; i < Math.min(filasCrudas.length, 10); i++) {
           const fila = filasCrudas[i].map((c) => String(c).toLowerCase().trim());
           const p = fila.findIndex((c) => c.includes('proveedor'));
@@ -237,6 +237,8 @@ export default function CentroDeCargas() {
           const comp = fila.findIndex((c) => c.includes('comprobante'));
           if (p > -1 && al > -1 && imp > -1 && comp > -1) {
             idxHeader = i; colProv = p; colAlta = al; colImporte = imp; colComp = comp;
+            // La unidad (UN AP) identifica la OOAD o UMAE real de cada alta
+            colUn = fila.findIndex((c) => c === 'un ap' || c.startsWith('un ap'));
             break;
           }
         }
@@ -253,7 +255,8 @@ export default function CentroDeCargas() {
           const importeNum = parseFloat(String(fila[colImporte]).replace(/[^0-9.\-]/g, ''));
           const comprobante = String(fila[colComp] || '').trim();
           if (!alta || !proveedor || isNaN(importeNum)) continue;
-          filas.push({ proveedor, alta, importe: importeNum, comprobante });
+          const unAp = colUn > -1 ? String(fila[colUn] || '').trim() : '';
+          filas.push({ proveedor, alta, importe: importeNum, comprobante, un_ap: unAp || null });
         }
 
         if (filas.length === 0) {
