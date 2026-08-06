@@ -43,6 +43,7 @@ export default function CentroDeCargas() {
   const [cruceMsg, setCruceMsg] = useState('');
   const [cruzando, setCruzando] = useState(false);
   const [confirmarCruce, setConfirmarCruce] = useState(false);
+  const [alineacion, setAlineacion] = useState(null);
 
   function log(txt, tipo) {
     setBitacora((b) => [...b, { txt, tipo: tipo || 'info' }]);
@@ -290,6 +291,20 @@ export default function CentroDeCargas() {
     }
   }
 
+  async function revisarDelegaciones(aplicar) {
+    try {
+      const res = await fetch('/api/alinear-delegaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aplicar: aplicar }),
+      });
+      const d = await res.json();
+      setAlineacion(d.ok ? { ...d.resultado, aplicado: aplicar && d.resultado.total > 0 } : null);
+    } catch (e) {
+      setAlineacion(null);
+    }
+  }
+
   async function cruzarCon5005() {
     setCruzando(true);
     setConfirmarCruce(false);
@@ -302,6 +317,8 @@ export default function CentroDeCargas() {
           ? ' · Total con alerta de importe activa AHORA en toda la base: ' + data.totalConAlertaActual + ' (debe coincidir con "Solo con observaciones" en Consulta).'
           : '';
         setCruceMsg('Cruce terminado: ' + data.encontrados + ' CR encontrados, ' + data.corregidos + ' corregidos, ' + data.alertasLimpiadas + ' alertas viejas limpiadas, ' + data.alertasImporte + ' alertas nuevas, ' + data.pendientesImss + ' facturas sin comprobante asignado por el IMSS, ' + data.ambiguos + ' casos ambiguos, ' + data.incompletos + ' filas incompletas.' + totalTexto);
+        // Con el 5005 recién cargado se revisa si alguna factura quedó en la delegación equivocada
+        await revisarDelegaciones(false);
       } else {
         setCruceMsg('Error: ' + data.error);
       }
@@ -359,6 +376,31 @@ export default function CentroDeCargas() {
 
         {msg5005 && <p style={{ fontSize: 13, color: GRIS, marginTop: 14, fontFamily: 'monospace', lineHeight: 1.6 }}>{msg5005}</p>}
         {cruceMsg && <p style={{ fontSize: 13, color: NAVY, marginTop: 10, fontFamily: 'monospace', lineHeight: 1.6 }}>{cruceMsg}</p>}
+
+        {alineacion && alineacion.total === 0 && (
+          <p style={{ fontSize: 13, color: VERDE, marginTop: 10 }}>✓ Todas las facturas coinciden con la delegación que reporta el IMSS.</p>
+        )}
+        {alineacion && alineacion.total > 0 && (
+          <div style={{ marginTop: 12, padding: '12px 14px', background: '#FBF0DD', border: '1px solid #EFDCB3', borderRadius: 8 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#9A5B00', marginBottom: 6 }}>
+              ⚠ {alineacion.total} factura(s) están en una delegación distinta a la que reporta el IMSS
+            </div>
+            {(alineacion.detalle || []).slice(0, 8).map((d, i) => (
+              <div key={i} style={{ fontSize: 12.5, color: GRIS, lineHeight: 1.7 }}>
+                {d.facturas} · {d.vieja} → <b style={{ color: NAVY }}>{d.correcta}</b>
+              </div>
+            ))}
+            {!alineacion.aplicado && (
+              <button type="button" onClick={() => revisarDelegaciones(true)}
+                style={{ marginTop: 10, padding: '8px 16px', border: 'none', borderRadius: 7, background: VERDE, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Corregirlas ahora
+              </button>
+            )}
+            {alineacion.aplicado && (
+              <div style={{ fontSize: 13, color: VERDE, fontWeight: 600, marginTop: 8 }}>✓ Corregidas. Quedó respaldo de cada cambio.</div>
+            )}
+          </div>
+        )}
       </div>
 
       <h2 style={{ fontSize: 16, color: NAVY, marginTop: 34, marginBottom: 4 }}>2 · Reportes 1003 y 4004</h2>
