@@ -64,7 +64,21 @@ export default function Home() {
   const [capturista, setCapturista] = useState('Sophie');
 
   // ---- Captura: por lotes (mismo susceptible/PDF, varias facturas) ----
-  const [loteActivo, setLoteActivo] = useState(false);
+  const [modoCaptura, setModoCaptura] = useState('');
+  const loteActivo = modoCaptura === 'varias';
+
+  function elegirModo(m) {
+    setModoCaptura(m);
+    setLoteFilas([]);
+    setLoteCantidadTexto('');
+    setLoteMensaje('');
+    setAlta('');
+    setAlta5005(null);
+    setCandidatoIdx(null);
+    setImporteForzado(false);
+    setAltaExiste(false);
+    setAltaOtroProv(null);
+  }
   const [loteCantidadTexto, setLoteCantidadTexto] = useState('');
   const [loteFilas, setLoteFilas] = useState([]);
   const [loteGuardando, setLoteGuardando] = useState(false);
@@ -1007,132 +1021,109 @@ async function cruzarCon5005() {
 
       {tab === 'captura' && (
         <div className="card">
-          <h2>Nueva factura</h2>
+          <h2>Nueva captura</h2>
           {mensaje && <div className={`alert ${mensajeTipo}`}>{mensaje}</div>}
-          {!loteActivo && (
-            <div className="field" style={{ marginBottom: 14 }}>
-              <label>1 · Número de alta</label>
-              <input
-                value={alta}
-                onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); setAltaOtroProv(null); setCandidatoIdx(null); setImporteForzado(false); }}
-                onBlur={(e) => verificarAltaExistente(e.target.value)}
-                placeholder="Ej. 118001-106261"
-                style={{ fontSize: 16, fontFamily: 'monospace' }}
-              />
-              {verificandoAlta && <span className="hint muted">Consultando el 5005…</span>}
-              {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes con este mismo proveedor — revisa si es duplicado</span>}
-              {!altaExiste && altaOtroProv && (
-                <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Este número de alta ya existe, pero de {altaOtroProv.empresa} ({altaOtroProv.grupo}). El IMSS reutiliza altas entre ejercicios — puedes guardar.</span>
-              )}
-              {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
-                <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos</span>
-              )}
-              {alta5005 && alta5005.encontrada === false && FORMATO_ALTA.test(alta.trim()) && (
-                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5, color: '#9A5B00' }}>
-                  ⚠ Esta alta todavía no aparece en el 5005. Captura los datos a mano y verifica que el número esté bien escrito.
-                </div>
-              )}
-              {alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null && (
-                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5 }}>
-                  <div style={{ fontWeight: 600, color: '#9A5B00', marginBottom: 6 }}>⚠ Esta alta aparece {alta5005.candidatos.length} veces en el 5005 — elige la que corresponde a tu factura</div>
-                  {alta5005.candidatos.map((c, i) => (
-                    <button key={i} type="button" className="btn btn-ghost btn-sm" style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: 6 }}
-                      onClick={() => aplicarCandidato(c, i)}>
-                      <b>{c.empresa || ('No. ' + c.provNo)}</b>{c.grupo ? ' · ' + c.grupo : ''}<br />
-                      <span className="muted">{c.delegacion || ('UN ' + c.unAp)} · {Number(c.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}{c.comprobante ? ' · CR ' + c.comprobante : ''}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {candidatoActivo && (
-                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 8, fontSize: 12.5 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>✓ Datos tomados del 5005 del IMSS</div>
-                  <div>Proveedor: <b>{candidatoActivo.empresa || ('No. ' + candidatoActivo.provNo)}</b>{candidatoActivo.grupo ? ' · ' + candidatoActivo.grupo : ''}</div>
-                  <div>Delegación: <b>{candidatoActivo.delegacion || ('UN ' + candidatoActivo.unAp)}</b></div>
-                  <div>Importe: <b>{Number(candidatoActivo.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></div>
-                  {candidatoActivo.comprobante && <div>Ya tiene contra recibo: <b>{candidatoActivo.comprobante}</b></div>}
-                  {alta5005 && alta5005.ambigua && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => { setCandidatoIdx(null); setImporteForzado(false); }}>Elegir otra</button>
-                  )}
-                </div>
-              )}
-              <span className="hint">{altaHint}</span>
-            </div>
-          )}
 
-          <div className="grid">
-            <div className="field">
-              <label>Grupo / cliente {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
-              <select value={grupo} disabled={!!candidatoActivo} onChange={(e) => { setGrupo(e.target.value); setEmpresaNumero(''); }}>
-                {catalogos.grupos.map((g) => <option key={g.nombre} value={g.nombre}>{g.nombre}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Empresa / laboratorio {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
-              <select value={empresaNumero} disabled={!!candidatoActivo} onChange={(e) => setEmpresaNumero(e.target.value)}>
-                <option value="">— selecciona —</option>
-                {empresas.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label>Delegación / OOAD-UMAE {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
-              <select value={delegacion} disabled={!!candidatoActivo} onChange={(e) => setDelegacion(e.target.value)}>
-                <option value="">— selecciona —</option>
-                {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
-              </select>
-            </div>
+          <div className="field" style={{ maxWidth: 420, marginBottom: 18 }}>
+            <label>1 · Nombre del susceptible</label>
+            <input value={pdf} onChange={(e) => setPdf(e.target.value)} placeholder="Ej. 1103859" style={{ fontSize: 16, fontFamily: 'monospace' }} />
           </div>
-          <div className="grid">
-            <div className="field">
-              <label>No. de PDF / Susceptible</label>
-              <input value={pdf} onChange={(e) => setPdf(e.target.value)} placeholder="Ej. PDF-00231" />
-            </div>
-            {!loteActivo && (
-              <div className="field">
-                <label>Número de factura</label>
-                <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)} placeholder="Si es distinto al PDF" />
-              </div>
-            )}
-            <div className="field">
-              <label>Fecha de recepción</label>
-              <input type="date" value={fechaRecepcion} onChange={(e) => setFechaRecepcion(e.target.value)} />
+
+          <div className="field" style={{ marginBottom: 18 }}>
+            <label>2 · ¿Cuántas facturas trae?</label>
+            <div className="toolbar" style={{ marginTop: 4 }}>
+              <button type="button" className={modoCaptura === 'una' ? 'btn btn-primary' : 'btn btn-ghost'} onClick={() => elegirModo('una')}>Una sola</button>
+              <button type="button" className={modoCaptura === 'varias' ? 'btn btn-primary' : 'btn btn-ghost'} onClick={() => elegirModo('varias')}>Varias</button>
+              {modoCaptura === 'varias' && (
+                <>
+                  <input value={loteCantidadTexto} onChange={(e) => setLoteCantidadTexto(e.target.value.replace(/\D/g, ''))}
+                    placeholder="0" style={{ width: 70, textAlign: 'center' }} />
+                  <span className="muted" style={{ fontSize: 13 }}>facturas</span>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={generarFilasLote}>Preparar renglones</button>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="field" style={{ marginBottom: 16 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={loteActivo}
-                onChange={(e) => { setLoteActivo(e.target.checked); setLoteFilas([]); setLoteCantidadTexto(''); setLoteMensaje(''); }}
-                style={{ width: 'auto' }}
-              />
-              Este susceptible incluye varias facturas (el sistema verifica que todas sean del mismo proveedor y delegación)
-            </label>
-          </div>
-
-          {!loteActivo ? (
+          {modoCaptura === 'una' && (
             <>
-              <div className="grid">
+              <div className="field" style={{ maxWidth: 420, marginBottom: 18 }}>
+                <label>3 · Número de alta</label>
+                <input
+                  value={alta}
+                  onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); setAltaOtroProv(null); setCandidatoIdx(null); setImporteForzado(false); }}
+                  onBlur={(e) => verificarAltaExistente(e.target.value)}
+                  placeholder="Ej. 118001-106261"
+                  style={{ fontSize: 16, fontFamily: 'monospace' }}
+                />
+                {verificandoAlta && <span className="hint muted">Consultando el 5005…</span>}
+                {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes con este mismo proveedor — revisa si es duplicado</span>}
+                {!altaExiste && altaOtroProv && (
+                  <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Este número de alta ya existe, pero de {altaOtroProv.empresa} ({altaOtroProv.grupo}). El IMSS reutiliza altas entre ejercicios — puedes guardar.</span>
+                )}
+                {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
+                  <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos</span>
+                )}
+                {alta5005 && alta5005.encontrada === false && FORMATO_ALTA.test(alta.trim()) && (
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5, color: '#9A5B00' }}>
+                    ⚠ Esta alta todavía no aparece en el 5005. Verifica que el número esté bien escrito — tendrás que capturar los datos a mano.
+                  </div>
+                )}
+                {alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null && (
+                  <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5 }}>
+                    <div style={{ fontWeight: 600, color: '#9A5B00', marginBottom: 6 }}>⚠ Esta alta aparece {alta5005.candidatos.length} veces en el 5005 — elige la que corresponde a tu factura</div>
+                    {alta5005.candidatos.map((c, i) => (
+                      <button key={i} type="button" className="btn btn-ghost btn-sm" style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: 6 }}
+                        onClick={() => aplicarCandidato(c, i)}>
+                        <b>{c.empresa || ('No. ' + c.provNo)}</b>{c.grupo ? ' · ' + c.grupo : ''}<br />
+                        <span className="muted">{c.delegacion || ('UN ' + c.unAp)} · {Number(c.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}{c.comprobante ? ' · CR ' + c.comprobante : ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <span className="hint">{altaHint}</span>
+              </div>
+
+              <div className="grid" style={{ marginBottom: 4 }}>
                 <div className="field">
-                  <label>Proveedor</label>
-                  <input readOnly value={empresaObj ? `${empresaObj.nombre} · No. ${empresaObj.numero}` : ''} />
+                  <label>Número de factura</label>
+                  <input value={numFactura} onChange={(e) => setNumFactura(e.target.value)} placeholder="Si es distinto al susceptible" />
                 </div>
                 <div className="field">
                   <label>Importe {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
                   <input value={importeTexto} onChange={(e) => { formatearImporte(e.target.value); setImporteForzado(false); }} placeholder="$0.00" />
-                  {importeDifiere && !importeForzado && (
-                    <div style={{ marginTop: 6, padding: '9px 11px', background: 'var(--red-soft)', border: '1px solid #E8C4C4', borderRadius: 8, fontSize: 12.5 }}>
-                      <div style={{ color: 'var(--red)', fontWeight: 600 }}>✖ No coincide con el IMSS ({Number(candidatoActivo.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })})</div>
-                      <div style={{ color: 'var(--red)', marginTop: 2 }}>Esta factura debe refacturarse. No se puede guardar así.</div>
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 7 }} onClick={() => setImporteForzado(true)}>Ya revisé la factura física, el importe correcto es el que capturé</button>
-                    </div>
-                  )}
-                  {importeDifiere && importeForzado && (
-                    <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Guardarás con un importe distinto al del IMSS — quedará marcada para revisión</span>
-                  )}
+                </div>
+                <div className="field">
+                  <label>Fecha de recepción</label>
+                  <input type="date" value={fechaRecepcion} onChange={(e) => setFechaRecepcion(e.target.value)} />
                 </div>
               </div>
+              {importeDifiere && !importeForzado && (
+                <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--red-soft)', border: '1px solid #E8C4C4', borderRadius: 8, fontSize: 12.5 }}>
+                  <div style={{ color: 'var(--red)', fontWeight: 600 }}>✖ El importe no coincide con el IMSS ({Number(candidatoActivo.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })})</div>
+                  <div style={{ color: 'var(--red)', marginTop: 2 }}>Esta factura debe refacturarse. No se puede guardar así.</div>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 7 }} onClick={() => setImporteForzado(true)}>Ya revisé la factura física, el importe correcto es el que capturé</button>
+                </div>
+              )}
+              {importeDifiere && importeForzado && (
+                <p className="hint" style={{ color: 'var(--amber)', marginBottom: 12 }}>⚠ Guardarás con un importe distinto al del IMSS — quedará marcada para revisión</p>
+              )}
+
+              {candidatoActivo && (
+                <div style={{ padding: '12px 14px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 10, marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600, marginBottom: 8 }}>Datos tomados del IMSS</div>
+                  <div className="grid" style={{ fontSize: 13 }}>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Proveedor</span><br />{candidatoActivo.empresa || ('No. ' + candidatoActivo.provNo)}</div>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Cliente</span><br />{candidatoActivo.grupo || '—'}</div>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Delegación</span><br />{candidatoActivo.delegacion || ('UN ' + candidatoActivo.unAp)}</div>
+                  </div>
+                  {candidatoActivo.comprobante && <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Ya tiene contra recibo: <b>{candidatoActivo.comprobante}</b></div>}
+                  {alta5005 && alta5005.ambigua && (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={() => { setCandidatoIdx(null); setImporteForzado(false); }}>Elegir otra</button>
+                  )}
+                </div>
+              )}
+
               <div className="field" style={{ maxWidth: 220, marginBottom: 16 }}>
                 <label>Capturista</label>
                 <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
@@ -1141,114 +1132,114 @@ async function cruzarCon5005() {
                   <option value="Sarahi">Sarahi</option>
                 </select>
               </div>
-              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim())) || (importeDifiere && !importeForzado) || (alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null)}>
+              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || !pdf.trim() || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim())) || (importeDifiere && !importeForzado) || (alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null)}>
                 {guardando ? 'Guardando…' : 'Guardar factura'}
               </button>
+              {!pdf.trim() && <p className="muted" style={{ marginTop: 8 }}>Captura primero el nombre del susceptible.</p>}
             </>
-          ) : (
+          )}
+
+          {modoCaptura === 'varias' && loteFilas.length > 0 && (
             <>
-              <p className="muted" style={{ marginBottom: 12 }}>
-                Proveedor: <b>{empresaObj ? empresaObj.nombre : '— elige empresa arriba —'}</b> · Delegación: <b>{delegacion || '— elige delegación arriba —'}</b>
-                {deleg && <> · el alta debe iniciar con <b>{deleg.codigo.split(',').join(' o ')}</b></>}
-              </p>
-              {loteFilas.length === 0 ? (
-                <div className="row-inline">
-                  <input
-                    type="number" min="2" max="30"
-                    value={loteCantidadTexto}
-                    onChange={(e) => setLoteCantidadTexto(e.target.value)}
-                    placeholder="¿Cuántas facturas incluye? (ej. 12)"
-                    style={{ maxWidth: 260 }}
-                  />
-                  <button className="btn btn-primary btn-sm" onClick={generarFilasLote}>Generar filas</button>
+              <div className="field" style={{ marginBottom: 6 }}><label>3 · Altas</label></div>
+              <table>
+                <thead><tr><th style={{ width: 40 }}>#</th><th>Número de alta</th><th>Importe</th><th>No. de factura</th></tr></thead>
+                <tbody>
+                  {loteFilas.map((f, idx) => {
+                    const dup = loteAltasDuplicadasEntreSi.has(f.alta.trim().toLowerCase());
+                    const c5 = f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 ? f.info5005.candidatos[0] : null;
+                    return (
+                      <tr key={idx}>
+                        <td className="muted">{idx + 1}</td>
+                        <td>
+                          <input
+                            value={f.alta}
+                            onChange={(e) => actualizarFilaLote(idx, 'alta', e.target.value)}
+                            onBlur={(e) => verificarAltaLoteExistente(idx, e.target.value)}
+                            placeholder="Ej. 118001-106261"
+                            style={{ minWidth: 170, fontFamily: 'monospace' }}
+                          />
+                          {dup && <span className="hint" style={{ color: 'var(--red)' }}>✗ Alta repetida en este mismo susceptible</span>}
+                          {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada con este proveedor</span>}
+                          {f.alta.trim() !== '' && !FORMATO_ALTA.test(f.alta.trim()) && (
+                            <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — 6 dígitos, guion, 6 dígitos</span>
+                          )}
+                          {f.info5005 && f.info5005.encontrada === false && FORMATO_ALTA.test(f.alta.trim()) && (
+                            <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Aún no aparece en el 5005</span>
+                          )}
+                          {c5 && !filaLoteDiscrepa(f) && (
+                            <span className="hint" style={{ color: 'var(--green)' }}>✓ {c5.empresa || ('No. ' + c5.provNo)} · {c5.delegacion || ('UN ' + c5.unAp)}</span>
+                          )}
+                          {c5 && empresaObj && c5.provNorm && String(empresaObj.numero).replace(/^0+/, '') !== c5.provNorm && (
+                            <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ El IMSS dice {c5.empresa || ('No. ' + c5.provNo)} — no puede ir en este susceptible</span>
+                          )}
+                          {c5 && delegacion && c5.delegacion && c5.delegacion !== delegacion && (
+                            <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ El IMSS dice {c5.delegacion} — no puede ir en este susceptible</span>
+                          )}
+                          {f.info5005 && f.info5005.encontrada && f.info5005.ambigua && (
+                            <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta aparece {f.info5005.candidatos.length} veces en el 5005 — verifica</span>
+                          )}
+                        </td>
+                        <td>
+                          <input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} />
+                          {c5 && Math.abs(Number(f.importeRaw || 0) - Number(c5.importe || 0)) > 0.01 && (
+                            <>
+                              <span className="hint" style={{ color: 'var(--red)' }}>✖ El IMSS dice {Number(c5.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</span>
+                              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, display: 'block' }} onClick={() => usarImporte5005Lote(idx)}>Usar el del IMSS</button>
+                            </>
+                          )}
+                        </td>
+                        <td><input value={f.numFactura} onChange={(e) => actualizarFilaLote(idx, 'numFactura', e.target.value)} placeholder="Si es distinto" style={{ minWidth: 140 }} /></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              <div className="grid" style={{ marginTop: 16 }}>
+                <div className="field">
+                  <label>Fecha de recepción</label>
+                  <input type="date" value={fechaRecepcion} onChange={(e) => setFechaRecepcion(e.target.value)} />
                 </div>
-              ) : (
-                <>
-                  <table>
-                    <thead><tr><th style={{ width: 40 }}>#</th><th>Alta ⚠</th><th>Importe</th><th>No. de factura</th></tr></thead>
-                    <tbody>
-                      {loteFilas.map((f, idx) => {
-                        const val = validarAltaLote(f.alta);
-                        const dup = loteAltasDuplicadasEntreSi.has(f.alta.trim().toLowerCase());
-                        return (
-                          <tr key={idx}>
-                            <td className="muted">{idx + 1}</td>
-                            <td>
-                              <input
-                                value={f.alta}
-                                onChange={(e) => actualizarFilaLote(idx, 'alta', e.target.value)}
-                                onBlur={(e) => verificarAltaLoteExistente(idx, e.target.value)}
-                                placeholder="Ej. AL-2026-00981"
-                                style={{ minWidth: 160 }}
-                              />
-                              {f.alta && (
-                                <span className="hint" style={{ color: dup ? 'var(--red)' : (val.ok ? 'var(--green)' : 'var(--red)') }}>
-                                  {dup ? '✗ Alta repetida en este mismo lote' : val.hint}
-                                </span>
-                              )}
-                              {f.existeEnServidor && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Ya fue capturada con este proveedor</span>}
-                              {!f.existeEnServidor && f.otroProv && (
-                                <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Alta reutilizada — la otra es de {f.otroProv.empresa}</span>
-                              )}
-                              {f.alta.trim() !== '' && !FORMATO_ALTA.test(f.alta.trim()) && (
-                                <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — 6 dígitos, guion, 6 dígitos</span>
-                              )}
-                              {f.info5005 && f.info5005.encontrada === false && FORMATO_ALTA.test(f.alta.trim()) && (
-                                <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Aún no aparece en el 5005</span>
-                              )}
-                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && (
-                                <span className="hint" style={{ color: 'var(--green)' }}>
-                                  ✓ IMSS: {Number(f.info5005.candidatos[0].importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
-                                  {f.info5005.candidatos[0].empresa ? ' · ' + f.info5005.candidatos[0].empresa : ''}
-                                </span>
-                              )}
-                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && empresaObj
-                                && String(empresaObj.numero).replace(/^0+/, '') !== f.info5005.candidatos[0].provNorm && (
-                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Según el IMSS esta alta es de {f.info5005.candidatos[0].empresa || ('No. ' + f.info5005.candidatos[0].provNo)} — no puede ir en este susceptible</span>
-                              )}
-                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && delegacion
-                                && f.info5005.candidatos[0].delegacion && f.info5005.candidatos[0].delegacion !== delegacion && (
-                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Según el IMSS esta alta es de {f.info5005.candidatos[0].delegacion} — no puede ir en este susceptible</span>
-                              )}
-                              {f.info5005 && f.info5005.encontrada && f.info5005.ambigua && (
-                                <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta aparece {f.info5005.candidatos.length} veces en el 5005 — verifica antes de guardar</span>
-                              )}
-                            </td>
-                            <td>
-                              <input value={f.importeTexto} onChange={(e) => formatearImporteLote(idx, e.target.value)} placeholder="$0.00" style={{ minWidth: 120 }} />
-                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && Math.abs(Number(f.importeRaw || 0) - Number(f.info5005.candidatos[0].importe || 0)) > 0.01 && (
-                                <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4, display: 'block' }} onClick={() => usarImporte5005Lote(idx)}>Usar el del IMSS</button>
-                              )}
-                            </td>
-                            <td><input value={f.numFactura} onChange={(e) => actualizarFilaLote(idx, 'numFactura', e.target.value)} placeholder="Si es distinto al PDF" style={{ minWidth: 140 }} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div className="field" style={{ maxWidth: 220, margin: '16px 0' }}>
-                    <label>Capturista</label>
-                    <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
-                      <option value="Sophie">Sophie</option>
-                      <option value="Mariano">Mariano</option>
-                      <option value="Sarahi">Sarahi</option>
-                    </select>
+                <div className="field">
+                  <label>Capturista</label>
+                  <select value={capturista} onChange={(e) => setCapturista(e.target.value)}>
+                    <option value="Sophie">Sophie</option>
+                    <option value="Mariano">Mariano</option>
+                    <option value="Sarahi">Sarahi</option>
+                  </select>
+                </div>
+              </div>
+
+              {empresaObj && (
+                <div style={{ padding: '12px 14px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 10, margin: '14px 0' }}>
+                  <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 600, marginBottom: 8 }}>Datos tomados del IMSS</div>
+                  <div className="grid" style={{ fontSize: 13 }}>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Proveedor</span><br />{empresaObj.nombre}</div>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Cliente</span><br />{grupo || '—'}</div>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Delegación</span><br />{delegacion || '—'}</div>
+                    <div><span className="muted" style={{ fontSize: 11.5 }}>Total</span><br /><b>{loteFilas.reduce((s, f) => s + Number(f.importeRaw || 0), 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></div>
                   </div>
-                  <div className="toolbar">
-                    <button
-                      className="btn btn-primary"
-                      onClick={guardarLote}
-                      disabled={loteGuardando || !loteTodoListo || loteAltasDuplicadasEntreSi.size > 0}
-                    >
-                      {loteGuardando ? 'Guardando…' : `Guardar ${loteFilas.length} facturas`}
-                    </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => { setLoteFilas([]); setLoteCantidadTexto(''); }}>Empezar de nuevo</button>
-                  </div>
-                  {!loteTodoListo && <p className="muted" style={{ marginTop: 8 }}>Captura el alta de cada renglón. El sistema toma del IMSS el proveedor, la delegación y el importe — y avisa si alguna no corresponde a este susceptible.</p>}
-                </>
+                </div>
               )}
+
+              <div className="toolbar">
+                <button className="btn btn-primary" onClick={guardarLote}
+                  disabled={loteGuardando || !loteTodoListo || loteAltasDuplicadasEntreSi.size > 0 || !pdf.trim()}>
+                  {loteGuardando ? 'Guardando…' : `Guardar ${loteFilas.length} facturas`}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setLoteFilas([]); setLoteCantidadTexto(''); }}>Empezar de nuevo</button>
+              </div>
+              {!loteTodoListo && <p className="muted" style={{ marginTop: 8 }}>Captura el alta de cada renglón. El sistema toma del IMSS el proveedor, la delegación y el importe — y avisa si alguna no corresponde a este susceptible.</p>}
               {loteMensaje && <div className={`alert ${loteMensajeTipo}`} style={{ marginTop: 12 }}>{loteMensaje}</div>}
             </>
+          )}
+
+          {modoCaptura === 'varias' && loteFilas.length === 0 && (
+            <p className="muted">Escribe cuántas facturas trae el susceptible y presiona «Preparar renglones».</p>
+          )}
+          {modoCaptura === '' && (
+            <p className="muted">Captura el nombre del susceptible y elige si trae una o varias facturas.</p>
           )}
         </div>
       )}
