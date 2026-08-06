@@ -57,6 +57,8 @@ export default function Home() {
   const [verificandoAlta, setVerificandoAlta] = useState(false);
   const [alta5005, setAlta5005] = useState(null);
   const [altaOtroProv, setAltaOtroProv] = useState(null);
+  const [candidatoIdx, setCandidatoIdx] = useState(null);
+  const [importeForzado, setImporteForzado] = useState(false);
   const [importeTexto, setImporteTexto] = useState('');
   const [importeRaw, setImporteRaw] = useState(0);
   const [capturista, setCapturista] = useState('Sophie');
@@ -228,6 +230,10 @@ export default function Home() {
       const r2 = await fetch('/api/altas/verificar?alta=' + encodeURIComponent(limpio));
       const d2 = await r2.json();
       setAlta5005(d2 && d2.ok ? d2 : null);
+      // Con un solo candidato no hay nada que elegir: se aplica directo
+      if (d2 && d2.ok && d2.encontrada && d2.candidatos.length === 1) {
+        aplicarCandidato(d2.candidatos[0], 0);
+      }
     } catch (err) {
       setAlta5005(null);
     }
@@ -235,6 +241,24 @@ export default function Home() {
   }
 
   // Trae del 5005 el importe y avisa si el proveedor elegido no corresponde
+  // Aplica al formulario los datos que el IMSS tiene para esa alta
+  function aplicarCandidato(c, idx) {
+    if (!c) return;
+    setCandidatoIdx(idx);
+    setImporteForzado(false);
+    const centavos = Math.round(Number(c.importe || 0) * 100);
+    formatearImporte(String(centavos));
+    if (c.grupo) setGrupo(c.grupo);
+    if (c.numeroCatalogo) setEmpresaNumero(c.numeroCatalogo);
+    if (c.delegacion) setDelegacion(c.delegacion);
+  }
+
+  const candidatoActivo = (alta5005 && alta5005.encontrada && candidatoIdx !== null)
+    ? alta5005.candidatos[candidatoIdx] : null;
+
+  const importeDifiere = candidatoActivo && importeRaw > 0
+    && Math.abs(importeRaw - Number(candidatoActivo.importe || 0)) > 0.01;
+
   function usarDatos5005() {
     if (!alta5005 || !alta5005.encontrada || !alta5005.candidatos.length) return;
     const c = alta5005.candidatos[0];
@@ -959,23 +983,74 @@ async function cruzarCon5005() {
         <div className="card">
           <h2>Nueva factura</h2>
           {mensaje && <div className={`alert ${mensajeTipo}`}>{mensaje}</div>}
+          {!loteActivo && (
+            <div className="field" style={{ marginBottom: 14 }}>
+              <label>1 · Número de alta</label>
+              <input
+                value={alta}
+                onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); setAltaOtroProv(null); setCandidatoIdx(null); setImporteForzado(false); }}
+                onBlur={(e) => verificarAltaExistente(e.target.value)}
+                placeholder="Ej. 118001-106261"
+                style={{ fontSize: 16, fontFamily: 'monospace' }}
+              />
+              {verificandoAlta && <span className="hint muted">Consultando el 5005…</span>}
+              {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes con este mismo proveedor — revisa si es duplicado</span>}
+              {!altaExiste && altaOtroProv && (
+                <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Este número de alta ya existe, pero de {altaOtroProv.empresa} ({altaOtroProv.grupo}). El IMSS reutiliza altas entre ejercicios — puedes guardar.</span>
+              )}
+              {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
+                <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos</span>
+              )}
+              {alta5005 && alta5005.encontrada === false && FORMATO_ALTA.test(alta.trim()) && (
+                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5, color: '#9A5B00' }}>
+                  ⚠ Esta alta todavía no aparece en el 5005. Captura los datos a mano y verifica que el número esté bien escrito.
+                </div>
+              )}
+              {alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null && (
+                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, fontSize: 12.5 }}>
+                  <div style={{ fontWeight: 600, color: '#9A5B00', marginBottom: 6 }}>⚠ Esta alta aparece {alta5005.candidatos.length} veces en el 5005 — elige la que corresponde a tu factura</div>
+                  {alta5005.candidatos.map((c, i) => (
+                    <button key={i} type="button" className="btn btn-ghost btn-sm" style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: 6 }}
+                      onClick={() => aplicarCandidato(c, i)}>
+                      <b>{c.empresa || ('No. ' + c.provNo)}</b>{c.grupo ? ' · ' + c.grupo : ''}<br />
+                      <span className="muted">{c.delegacion || ('UN ' + c.unAp)} · {Number(c.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}{c.comprobante ? ' · CR ' + c.comprobante : ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {candidatoActivo && (
+                <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 8, fontSize: 12.5 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>✓ Datos tomados del 5005 del IMSS</div>
+                  <div>Proveedor: <b>{candidatoActivo.empresa || ('No. ' + candidatoActivo.provNo)}</b>{candidatoActivo.grupo ? ' · ' + candidatoActivo.grupo : ''}</div>
+                  <div>Delegación: <b>{candidatoActivo.delegacion || ('UN ' + candidatoActivo.unAp)}</b></div>
+                  <div>Importe: <b>{Number(candidatoActivo.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></div>
+                  {candidatoActivo.comprobante && <div>Ya tiene contra recibo: <b>{candidatoActivo.comprobante}</b></div>}
+                  {alta5005 && alta5005.ambigua && (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => { setCandidatoIdx(null); setImporteForzado(false); }}>Elegir otra</button>
+                  )}
+                </div>
+              )}
+              <span className="hint">{altaHint}</span>
+            </div>
+          )}
+
           <div className="grid">
             <div className="field">
-              <label>Grupo / cliente</label>
-              <select value={grupo} onChange={(e) => { setGrupo(e.target.value); setEmpresaNumero(''); }}>
+              <label>Grupo / cliente {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
+              <select value={grupo} disabled={!!candidatoActivo} onChange={(e) => { setGrupo(e.target.value); setEmpresaNumero(''); }}>
                 {catalogos.grupos.map((g) => <option key={g.nombre} value={g.nombre}>{g.nombre}</option>)}
               </select>
             </div>
             <div className="field">
-              <label>Empresa / laboratorio</label>
-              <select value={empresaNumero} onChange={(e) => setEmpresaNumero(e.target.value)}>
+              <label>Empresa / laboratorio {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
+              <select value={empresaNumero} disabled={!!candidatoActivo} onChange={(e) => setEmpresaNumero(e.target.value)}>
                 <option value="">— selecciona —</option>
                 {empresas.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
               </select>
             </div>
             <div className="field">
-              <label>Delegación / OOAD-UMAE</label>
-              <select value={delegacion} onChange={(e) => setDelegacion(e.target.value)}>
+              <label>Delegación / OOAD-UMAE {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
+              <select value={delegacion} disabled={!!candidatoActivo} onChange={(e) => setDelegacion(e.target.value)}>
                 <option value="">— selecciona —</option>
                 {catalogos.delegaciones.map((d) => <option key={d.nombre} value={d.nombre}>{d.nombre}</option>)}
               </select>
@@ -1018,45 +1093,18 @@ async function cruzarCon5005() {
                   <input readOnly value={empresaObj ? `${empresaObj.nombre} · No. ${empresaObj.numero}` : ''} />
                 </div>
                 <div className="field">
-                  <label>Importe</label>
-                  <input value={importeTexto} onChange={(e) => formatearImporte(e.target.value)} placeholder="$0.00" />
-                </div>
-                <div className="field">
-                  <label>Número de alta ⚠ crítico</label>
-                  <input
-                    value={alta}
-                    onChange={(e) => { setAlta(limpiarInvisibles(e.target.value)); setAltaExiste(false); setAlta5005(null); setAltaOtroProv(null); }}
-                    onBlur={(e) => verificarAltaExistente(e.target.value)}
-                    placeholder="Ej. AL-2026-00981"
-                  />
-                  {verificandoAlta && <span className="hint muted">Verificando…</span>}
-                  {altaExiste && <span className="hint" style={{ color: 'var(--red)' }}>🔒 Esta alta ya fue capturada antes con este mismo proveedor — revisa si es duplicado</span>}
-                  {!altaExiste && altaOtroProv && (
-                    <span className="hint" style={{ color: 'var(--amber)' }}>ℹ Este número de alta ya existe, pero de {altaOtroProv.empresa} ({altaOtroProv.grupo}). El IMSS reutiliza altas entre ejercicios — puedes guardar.</span>
-                  )}
-                  {alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()) && (
-                    <span className="hint" style={{ color: 'var(--red)' }}>✖ Formato inválido — debe ser 6 dígitos, guion, 6 dígitos (ej. 118001-106261)</span>
-                  )}
-                  {alta5005 && alta5005.encontrada === false && FORMATO_ALTA.test(alta.trim()) && (
-                    <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta todavía no aparece en el 5005 — puedes guardar, pero revisa que esté bien escrita</span>
-                  )}
-                  {alta5005 && alta5005.encontrada && alta5005.candidatos.length > 0 && (
-                    <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--green-soft)', border: '1px solid #cdeadd', borderRadius: 8, fontSize: 12.5 }}>
-                      <div style={{ fontWeight: 600, color: 'var(--green)', marginBottom: 4 }}>✓ Encontrada en el 5005 del IMSS</div>
-                      <div>Proveedor: <b>{alta5005.candidatos[0].empresa || ('No. ' + alta5005.candidatos[0].provNo)}</b>{alta5005.candidatos[0].grupo ? ' · ' + alta5005.candidatos[0].grupo : ''}</div>
-                      <div>Importe según el IMSS: <b>{Number(alta5005.candidatos[0].importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}</b></div>
-                      {alta5005.candidatos[0].comprobante && <div>Ya tiene contra recibo: <b>{alta5005.candidatos[0].comprobante}</b></div>}
-                      {alta5005.ambigua && <div style={{ color: 'var(--amber)', marginTop: 4 }}>⚠ Esta alta aparece más de una vez en el 5005 (posible reúso entre ejercicios) — verifica antes de guardar</div>}
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }} onClick={usarDatos5005}>Usar estos datos</button>
-                      {empresaObj && alta5005.candidatos[0].provNorm && String(empresaObj.numero).replace(/^0+/, '') !== alta5005.candidatos[0].provNorm && (
-                        <div style={{ color: 'var(--red)', marginTop: 6, fontWeight: 600 }}>✖ El proveedor que elegiste NO es el que el IMSS tiene para esta alta</div>
-                      )}
-                      {importeRaw > 0 && Math.abs(importeRaw - Number(alta5005.candidatos[0].importe || 0)) > 0.01 && (
-                        <div style={{ color: 'var(--red)', marginTop: 4, fontWeight: 600 }}>✖ El importe que capturaste no coincide con el del IMSS</div>
-                      )}
+                  <label>Importe {candidatoActivo && <span className="muted" style={{ fontWeight: 400 }}>· del IMSS</span>}</label>
+                  <input value={importeTexto} onChange={(e) => { formatearImporte(e.target.value); setImporteForzado(false); }} placeholder="$0.00" />
+                  {importeDifiere && !importeForzado && (
+                    <div style={{ marginTop: 6, padding: '9px 11px', background: 'var(--red-soft)', border: '1px solid #E8C4C4', borderRadius: 8, fontSize: 12.5 }}>
+                      <div style={{ color: 'var(--red)', fontWeight: 600 }}>✖ No coincide con el IMSS ({Number(candidatoActivo.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })})</div>
+                      <div style={{ color: 'var(--red)', marginTop: 2 }}>Esta factura debe refacturarse. No se puede guardar así.</div>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 7 }} onClick={() => setImporteForzado(true)}>Ya revisé la factura física, el importe correcto es el que capturé</button>
                     </div>
                   )}
-                  <span className="hint">{altaHint}</span>
+                  {importeDifiere && importeForzado && (
+                    <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Guardarás con un importe distinto al del IMSS — quedará marcada para revisión</span>
+                  )}
                 </div>
               </div>
               <div className="field" style={{ maxWidth: 220, marginBottom: 16 }}>
@@ -1067,7 +1115,7 @@ async function cruzarCon5005() {
                   <option value="Sarahi">Sarahi</option>
                 </select>
               </div>
-              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim()))}>
+              <button className="btn btn-primary" onClick={guardar} disabled={guardando || altaExiste || (alta.trim() !== '' && !FORMATO_ALTA.test(alta.trim())) || (importeDifiere && !importeForzado) || (alta5005 && alta5005.encontrada && alta5005.ambigua && candidatoIdx === null)}>
                 {guardando ? 'Guardando…' : 'Guardar factura'}
               </button>
             </>
