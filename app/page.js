@@ -373,7 +373,24 @@ export default function Home() {
     try {
       const r2 = await fetch('/api/altas/verificar?alta=' + encodeURIComponent(limpio));
       const d2 = await r2.json();
-      setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, info5005: (d2 && d2.ok ? d2 : null) } : f)));
+      setLoteFilas((prev) => prev.map((f, i) => {
+        if (i !== idx) return f;
+        const nueva = { ...f, info5005: (d2 && d2.ok ? d2 : null) };
+        // El importe lo pone el IMSS; el capturista solo lo cambia si la factura difiere
+        if (d2 && d2.ok && d2.encontrada && d2.candidatos.length === 1) {
+          const v = Number(d2.candidatos[0].importe || 0);
+          nueva.importeRaw = v;
+          nueva.importeTexto = v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+        }
+        return nueva;
+      }));
+      // La primera alta define el proveedor y la delegación de todo el susceptible
+      if (d2 && d2.ok && d2.encontrada && d2.candidatos.length === 1 && idx === 0) {
+        const c = d2.candidatos[0];
+        if (c.grupo) setGrupo(c.grupo);
+        if (c.numeroCatalogo) setEmpresaNumero(c.numeroCatalogo);
+        if (c.delegacion) setDelegacion(c.delegacion);
+      }
     } catch (err) {
       setLoteFilas((prev) => prev.map((f, i) => (i === idx ? { ...f, info5005: null } : f)));
     }
@@ -388,9 +405,18 @@ export default function Home() {
     }));
   }
 
+  // Una fila estorba si el IMSS dice que es de otro proveedor o de otra delegación
+  function filaLoteDiscrepa(f) {
+    if (!f.info5005 || !f.info5005.encontrada || !f.info5005.candidatos.length) return false;
+    const c = f.info5005.candidatos[0];
+    const provDistinto = empresaObj && c.provNorm && String(empresaObj.numero).replace(/^0+/, '') !== c.provNorm;
+    const delegDistinta = c.delegacion && delegacion && c.delegacion !== delegacion;
+    return !!(provDistinto || delegDistinta);
+  }
+
   const loteTodoListo = loteFilas.length > 0
     && grupo && empresaObj && delegacion && pdf
-    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && FORMATO_ALTA.test(f.alta.trim()) && validarAltaLote(f.alta).ok && !f.existeEnServidor);
+    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && FORMATO_ALTA.test(f.alta.trim()) && validarAltaLote(f.alta).ok && !f.existeEnServidor && !filaLoteDiscrepa(f));
 
   const loteAltasDuplicadasEntreSi = (() => {
     const vistos = new Set();
@@ -1081,7 +1107,7 @@ async function cruzarCon5005() {
                 onChange={(e) => { setLoteActivo(e.target.checked); setLoteFilas([]); setLoteCantidadTexto(''); setLoteMensaje(''); }}
                 style={{ width: 'auto' }}
               />
-              Este susceptible incluye varias facturas (mismo grupo, proveedor y delegación)
+              Este susceptible incluye varias facturas (el sistema verifica que todas sean del mismo proveedor y delegación)
             </label>
           </div>
 
@@ -1178,7 +1204,14 @@ async function cruzarCon5005() {
                               )}
                               {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && empresaObj
                                 && String(empresaObj.numero).replace(/^0+/, '') !== f.info5005.candidatos[0].provNorm && (
-                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Esta alta es de OTRO proveedor</span>
+                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Según el IMSS esta alta es de {f.info5005.candidatos[0].empresa || ('No. ' + f.info5005.candidatos[0].provNo)} — no puede ir en este susceptible</span>
+                              )}
+                              {f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 && delegacion
+                                && f.info5005.candidatos[0].delegacion && f.info5005.candidatos[0].delegacion !== delegacion && (
+                                <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ Según el IMSS esta alta es de {f.info5005.candidatos[0].delegacion} — no puede ir en este susceptible</span>
+                              )}
+                              {f.info5005 && f.info5005.encontrada && f.info5005.ambigua && (
+                                <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta aparece {f.info5005.candidatos.length} veces en el 5005 — verifica antes de guardar</span>
                               )}
                             </td>
                             <td>
@@ -1211,7 +1244,7 @@ async function cruzarCon5005() {
                     </button>
                     <button className="btn btn-ghost btn-sm" onClick={() => { setLoteFilas([]); setLoteCantidadTexto(''); }}>Empezar de nuevo</button>
                   </div>
-                  {!loteTodoListo && <p className="muted" style={{ marginTop: 8 }}>Completa grupo, empresa, delegación y todas las filas (alta válida + importe) para poder guardar.</p>}
+                  {!loteTodoListo && <p className="muted" style={{ marginTop: 8 }}>Captura el alta de cada renglón. El sistema toma del IMSS el proveedor, la delegación y el importe — y avisa si alguna no corresponde a este susceptible.</p>}
                 </>
               )}
               {loteMensaje && <div className={`alert ${loteMensajeTipo}`} style={{ marginTop: 12 }}>{loteMensaje}</div>}
