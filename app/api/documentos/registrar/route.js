@@ -27,7 +27,9 @@ export async function POST(request) {
       const { data: coincidencia } = await supabase
         .from('facturas')
         .select('grupo, delegacion, pdf')
-        .eq('pdf', c)
+        // El susceptible puede traer varios folios en un solo nombre
+        // (ej. 1107155-1107154-1107637), así que se busca el número dentro del campo.
+        .ilike('pdf', `%${c}%`)
         .limit(1)
         .maybeSingle();
       if (coincidencia) {
