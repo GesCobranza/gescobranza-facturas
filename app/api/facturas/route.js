@@ -21,14 +21,18 @@ export async function GET(request) {
   const fechaHasta = searchParams.get('fechaHasta') || null;
   const busqueda = searchParams.get('busqueda') || null;
   const exportar = searchParams.get('exportar') === '1';
+  const emisionDesde = searchParams.get('emisionDesde') || null;
+  const emisionHasta = searchParams.get('emisionHasta') || null;
 
   const supabase = getSupabaseAdmin();
 
   function construirQuery() {
-    let q = supabase.from('facturas').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
+    // Se lee de facturas_cr (facturas + detalle del contra recibo) para poder
+    // filtrar por fecha de emisión y mostrar el estatus institucional.
+    let q = supabase.from('facturas_cr').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
     if (grupo) q = q.eq('grupo', grupo);
     if (delegacion) q = q.eq('delegacion', delegacion);
-    if (provNo) q = q.eq('prov_no', normalizarProvNo(provNo));
+    if (provNo) q = q.eq('prov_no_norm', normalizarProvNo(provNo));
     if (estatus === 'con_cr') q = q.eq('tiene_cr', true);
     if (estatus === 'sin_cr') q = q.eq('tiene_cr', false);
     if (conObservacion) q = q.not('alerta_importe', 'is', null);
@@ -39,6 +43,8 @@ export async function GET(request) {
       q = q.or(`alta.ilike.%${esc}%,num_factura.ilike.%${esc}%`);
     }
     if (fechaHasta) q = q.lte('fecha_captura', fechaHasta + 'T23:59:59');
+    if (emisionDesde) q = q.gte('cr_fecha_emision', emisionDesde);
+    if (emisionHasta) q = q.lte('cr_fecha_emision', emisionHasta);
     return q;
   }
 
