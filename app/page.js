@@ -25,6 +25,9 @@ export default function Home() {
   const [cBusqueda, setCBusqueda] = useState('');
   const [cFiltroCapturista, setCFiltroCapturista] = useState('');
   const [cFiltroFechaDesde, setCFiltroFechaDesde] = useState('');
+  const [cEmisionDias, setCEmisionDias] = useState('');
+  const [cEmisionDesde, setCEmisionDesde] = useState('');
+  const [cEmisionHasta, setCEmisionHasta] = useState('');
   const [cFiltroFechaHasta, setCFiltroFechaHasta] = useState('');
   const [cPagina, setCPagina] = useState(1);
   const [consultaData, setConsultaData] = useState({ facturas: [], total: 0 });
@@ -143,7 +146,7 @@ export default function Home() {
 
   useEffect(() => {
     if (tab === 'consulta') cargarConsulta();
-  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cFiltroCapturista, cFiltroFechaDesde, cFiltroFechaHasta, cBusqueda, cPagina]);
+  }, [tab, cFiltroGrupo, cFiltroDeleg, cFiltroProvNo, cFiltroEstatus, cFiltroObservacion, cFiltroCapturista, cFiltroFechaDesde, cFiltroFechaHasta, cBusqueda, cPagina, cEmisionDias, cEmisionDesde, cEmisionHasta]);
 
   useEffect(() => {
     if (tab === 'panel') cargarKpi();
@@ -165,6 +168,28 @@ export default function Home() {
     setCargando(false);
   }
 
+  function rangoEmisionCr() {
+    if (cEmisionDias === 'rango') return { desde: cEmisionDesde || null, hasta: cEmisionHasta || null };
+    if (!cEmisionDias) return { desde: null, hasta: null };
+    const d = new Date();
+    const hasta = d.toISOString().slice(0, 10);
+    d.setDate(d.getDate() - parseInt(cEmisionDias, 10));
+    return { desde: d.toISOString().slice(0, 10), hasta: hasta };
+  }
+
+  // Abre el PDF del susceptible en una pestaña nueva
+  async function abrirPdfSusceptible(pdf) {
+    if (!pdf) return;
+    try {
+      const res = await fetch('/api/documentos/por-pdf?pdf=' + encodeURIComponent(pdf));
+      const d = await res.json();
+      if (d.ok && d.url) window.open(d.url, '_blank');
+      else alert(d.error || 'No se encontró el PDF de este susceptible.');
+    } catch (e) {
+      alert('No se pudo abrir el PDF.');
+    }
+  }
+
   async function cargarConsulta() {
     setConsultaCargando(true);
     const params = new URLSearchParams({ pagina: cPagina, porPagina: CONSULTA_POR_PAGINA });
@@ -176,6 +201,8 @@ export default function Home() {
     if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
     if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
     if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
+    if (rangoEmisionCr().desde) params.set('emisionDesde', rangoEmisionCr().desde);
+    if (rangoEmisionCr().hasta) params.set('emisionHasta', rangoEmisionCr().hasta);
     if (cBusqueda) params.set('busqueda', cBusqueda);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
@@ -621,6 +648,8 @@ export default function Home() {
     if (cFiltroCapturista) params.set('capturista', cFiltroCapturista);
     if (cFiltroFechaDesde) params.set('fechaDesde', cFiltroFechaDesde);
     if (cFiltroFechaHasta) params.set('fechaHasta', cFiltroFechaHasta);
+    if (rangoEmisionCr().desde) params.set('emisionDesde', rangoEmisionCr().desde);
+    if (rangoEmisionCr().hasta) params.set('emisionHasta', rangoEmisionCr().hasta);
     if (cBusqueda) params.set('busqueda', cBusqueda);
     const res = await fetch('/api/facturas?' + params.toString());
     const data = await res.json();
@@ -1310,6 +1339,21 @@ async function cruzarCon5005() {
               </button>
             )}
           </div>
+          <div className="toolbar" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="muted" style={{ fontSize: 12.5 }}>Contra recibos emitidos en los últimos:</span>
+            <button className={cEmisionDias === '' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias(''); setCPagina(1); }}>Todos</button>
+            <button className={cEmisionDias === '7' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('7'); setCPagina(1); }}>7 días</button>
+            <button className={cEmisionDias === '15' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('15'); setCPagina(1); }}>15 días</button>
+            <button className={cEmisionDias === '30' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('30'); setCPagina(1); }}>30 días</button>
+            <button className={cEmisionDias === '90' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('90'); setCPagina(1); }}>90 días</button>
+            <button className={cEmisionDias === 'rango' ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'} onClick={() => { setCEmisionDias('rango'); setCPagina(1); }}>Rango</button>
+            {cEmisionDias === 'rango' && (
+              <input type="date" value={cEmisionDesde} onChange={(e) => { setCEmisionDesde(e.target.value); setCPagina(1); }} style={{ width: 'auto' }} />
+            )}
+            {cEmisionDias === 'rango' && (
+              <input type="date" value={cEmisionHasta} onChange={(e) => { setCEmisionHasta(e.target.value); setCPagina(1); }} style={{ width: 'auto' }} />
+            )}
+          </div>
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
               <table>
@@ -1320,7 +1364,7 @@ async function cruzarCon5005() {
                       {editandoId === f.id ? (
                         <>
                           <td><input value={editAlta} onChange={(e) => setEditAlta(e.target.value)} style={{ maxWidth: 140 }} /></td>
-                          <td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td>{f.pdf ? <a href="#" onClick={(e) => { e.preventDefault(); abrirPdfSusceptible(f.pdf); }}>{f.pdf}</a> : '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td><input value={editImporte} onChange={(e) => setEditImporte(e.target.value)} style={{ maxWidth: 100 }} /></td>
                           <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
@@ -1333,7 +1377,7 @@ async function cruzarCon5005() {
                         </>
                       ) : (
                         <>
-                          <td>{f.alta}</td><td>{f.pdf || '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
+                          <td>{f.alta}</td><td>{f.pdf ? <a href="#" onClick={(e) => { e.preventDefault(); abrirPdfSusceptible(f.pdf); }}>{f.pdf}</a> : '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                           <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
                           <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
