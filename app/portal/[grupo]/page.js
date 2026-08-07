@@ -441,72 +441,143 @@ export default function PortalGrupo() {
 
           {kpiCargando || !kpiData ? <p className="muted">Cargando…</p> : (
             <>
-              <div className="kpi-ring-row">
-                <div className="card-hero kpi-ring-card">
-                  <div className="kpi-ring-wrap">
+              <div className="card" style={{ padding: '22px 26px' }}>
+                <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 230 }}>
+                    <div className="muted" style={{ fontSize: 12, letterSpacing: '0.02em' }}>CARTERA GESTIONADA</div>
+                    <div style={{ fontSize: 34, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.15, marginTop: 3 }}>{mny(kpiData.importe_total)}</div>
+                    <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
+                      {kpiData.total} altas · {(kpiData.top_proveedores || []).length} laboratorio(s) · {(kpiData.por_delegacion || []).length} delegación(es)
+                    </div>
+                  </div>
+                  <div className="kpi-ring-wrap" style={{ width: 128, height: 128, flexShrink: 0 }}>
                     <svg viewBox="0 0 160 160">
                       <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green-soft)" strokeWidth="14" />
-                      <circle
-                        cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
+                      <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
                         strokeDasharray="427"
                         strokeDashoffset={427 - (427 * (kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0)) / 100}
                       />
                     </svg>
                     <div className="kpi-ring-center">
                       <div className="kpi-ring-num">{kpiData.total ? Math.round((kpiData.con_cr / kpiData.total) * 100) : 0}%</div>
-                      <div className="kpi-ring-lbl">tasa de<br />recuperación</div>
+                      <div className="kpi-ring-lbl">de las altas</div>
                     </div>
                   </div>
-                  <div className="kpi-ring-total">{kpiData.total} facturas totales</div>
                 </div>
-                <div className="kpi-stat-grid">
-                  <div className="kpi-stat" style={{ background: 'var(--green-soft)' }}>
-                    <div className="lbl" style={{ color: 'var(--green)' }}>Con contra recibo</div>
-                    <div className="num" style={{ color: 'var(--green)' }}>{kpiData.con_cr}</div>
-                    <div className="sub" style={{ color: 'var(--green)' }}>${Number(kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+
+                <div style={{ borderTop: '1px solid var(--line)', marginTop: 18, paddingTop: 16, display: 'flex', gap: 34, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--green)', fontWeight: 600 }}>● Con contra recibo emitido</div>
+                    <div style={{ fontSize: 23, fontWeight: 600, color: 'var(--green)', marginTop: 3 }}>{mny(kpiData.importe_con_cr)}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {kpiData.importe_total ? Math.round((kpiData.importe_con_cr / kpiData.importe_total) * 100) : 0}% del importe · {kpiData.con_cr} altas
+                    </div>
                   </div>
-                  <div className="kpi-stat" style={{ background: 'var(--amber-soft)' }}>
-                    <div className="lbl" style={{ color: 'var(--amber)' }}>Sin contra recibo</div>
-                    <div className="num" style={{ color: 'var(--amber)' }}>{kpiData.sin_cr}</div>
-                    <div className="sub" style={{ color: 'var(--amber)' }}>${Number(kpiData.importe_total - kpiData.importe_con_cr).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                  <div className="kpi-stat" style={{ background: 'var(--card)', border: '1px solid var(--line)', gridColumn: '1 / -1' }}>
-                    <div className="lbl" style={{ color: 'var(--text-soft)' }}>Importe total</div>
-                    <div className="num" style={{ color: 'var(--navy)' }}>${Number(kpiData.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                  <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontSize: 12.5, color: 'var(--amber)', fontWeight: 600 }}>● En gestión ante el IMSS</div>
+                    <div style={{ fontSize: 23, fontWeight: 600, color: 'var(--amber)', marginTop: 3 }}>{mny(kpiData.importe_total - kpiData.importe_con_cr)}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {kpiData.importe_total ? Math.round(((kpiData.importe_total - kpiData.importe_con_cr) / kpiData.importe_total) * 100) : 0}% del importe · {kpiData.sin_cr} altas
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="card">
+                <h2>Importe por laboratorio</h2>
+                <p className="muted" style={{ marginBottom: 10 }}>Ordenado de mayor a menor</p>
+                <table>
+                  <thead><tr>
+                    <th>Laboratorio</th>
+                    <th style={{ textAlign: 'right' }}>Con CR</th>
+                    <th style={{ textAlign: 'right' }}>Sin CR</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th style={{ textAlign: 'right' }}>% avance</th>
+                  </tr></thead>
+                  <tbody>
+                    {(kpiData.top_proveedores || []).map((p) => {
+                      const cc = Number(p.importe_con_cr || 0);
+                      const tt = Number(p.importe_total || 0);
+                      const pct = tt ? Math.round((cc / tt) * 100) : 0;
+                      return (
+                        <tr key={p.prov_no}>
+                          <td>{p.prov_nombre}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--green)' }}>{mny(cc)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--amber)' }}>{mny(tt - cc)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600 }}>{mny(tt)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, color: pct >= 60 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)' }}>{pct}%</td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ background: 'var(--green)', color: '#fff' }}>
+                      <td style={{ fontWeight: 700 }}>TOTAL</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{mny(kpiData.importe_con_cr)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{mny(kpiData.importe_total - kpiData.importe_con_cr)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{mny(kpiData.importe_total)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{kpiData.importe_total ? Math.round((kpiData.importe_con_cr / kpiData.importe_total) * 100) : 0}%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="card">
+                <h2>Número de altas por laboratorio</h2>
+                <table>
+                  <thead><tr>
+                    <th>Laboratorio</th>
+                    <th style={{ textAlign: 'right' }}>Con CR</th>
+                    <th style={{ textAlign: 'right' }}>Sin CR</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
+                  </tr></thead>
+                  <tbody>
+                    {(kpiData.top_proveedores || []).map((p) => (
+                      <tr key={p.prov_no}>
+                        <td>{p.prov_nombre}</td>
+                        <td style={{ textAlign: 'right' }}>{p.con_cr}</td>
+                        <td style={{ textAlign: 'right' }}>{p.total - p.con_cr}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.total}</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: 'var(--green)', color: '#fff' }}>
+                      <td style={{ fontWeight: 700 }}>TOTAL</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{kpiData.con_cr}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{kpiData.sin_cr}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{kpiData.total}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               <div className="card">
                 <h2>Por delegación</h2>
+                <p className="muted" style={{ marginBottom: 10 }}>Ordenado por importe sin contra recibo</p>
                 <table>
-                  <thead><tr><th>Delegación</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th></tr></thead>
+                  <thead><tr>
+                    <th>Delegación</th>
+                    <th style={{ textAlign: 'right' }}>Altas</th>
+                    <th style={{ textAlign: 'right' }}>Con CR</th>
+                    <th style={{ textAlign: 'right' }}>Sin CR</th>
+                    <th style={{ textAlign: 'right' }}>% avance</th>
+                  </tr></thead>
                   <tbody>
-                    {kpiData.por_delegacion.map((d) => (
-                      <tr key={d.delegacion}>
-                        <td>{d.delegacion}</td><td>{d.total}</td><td>{d.con_cr}</td><td>{d.total - d.con_cr}</td>
-                        <td>{d.total ? Math.round((d.con_cr / d.total) * 100) : 0}%</td>
-                      </tr>
-                    ))}
+                    {(kpiData.por_delegacion || []).map((d) => {
+                      const cc = Number(d.importe_con_cr || 0);
+                      const tt = Number(d.importe_total || 0);
+                      const pct = tt ? Math.round((cc / tt) * 100) : 0;
+                      return (
+                        <tr key={d.delegacion}>
+                          <td>{d.delegacion}</td>
+                          <td style={{ textAlign: 'right' }} className="muted">{d.total}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--green)' }}>{mny(cc)}</td>
+                          <td style={{ textAlign: 'right', color: 'var(--amber)' }}>{mny(tt - cc)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: 600, color: pct >= 60 ? 'var(--green)' : pct >= 40 ? 'var(--amber)' : 'var(--red)' }}>{pct}%</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
-              <div className="card">
-                <h2>Top proveedores por volumen</h2>
-                <table>
-                  <thead><tr><th>Proveedor</th><th>Total</th><th>Con CR</th><th>Sin CR</th><th>% avance</th><th>Importe total</th></tr></thead>
-                  <tbody>
-                    {kpiData.top_proveedores.map((p) => (
-                      <tr key={p.prov_no}>
-                        <td>{p.prov_nombre}</td><td>{p.total}</td><td>{p.con_cr}</td><td>{p.total - p.con_cr}</td>
-                        <td>{p.total ? Math.round((p.con_cr / p.total) * 100) : 0}%</td>
-                        <td>${Number(p.importe_total).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             </>
           )}
         </>
