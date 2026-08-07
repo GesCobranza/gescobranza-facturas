@@ -10,6 +10,12 @@ function mny(n) {
   return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtFecha(v) {
+  if (!v) return '';
+  const s = String(v).slice(0, 10).split('-');
+  return s.length === 3 ? s[2] + '/' + s[1] + '/' + s[0] : '';
+}
+
 function hoyISO() {
   const a = new Date();
   const dd = (n) => String(n).padStart(2, '0');
@@ -197,6 +203,7 @@ export default function RegistrarEnvio() {
                     <th style={{ padding: '8px 10px', textAlign: 'left', color: GRIS, fontWeight: 600 }}>Laboratorio</th>
                     <th style={{ padding: '8px 10px', textAlign: 'left', color: GRIS, fontWeight: 600 }}>Grupo</th>
                     <th style={{ padding: '8px 10px', textAlign: 'left', color: GRIS, fontWeight: 600 }}>PDF</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left', color: GRIS, fontWeight: 600 }}>Capturada</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', color: GRIS, fontWeight: 600 }}>Importe</th>
                   </tr>
                 </thead>
@@ -212,6 +219,7 @@ export default function RegistrarEnvio() {
                       <td style={{ padding: '7px 10px', color: GRIS }}>{f.empresa}</td>
                       <td style={{ padding: '7px 10px', color: GRIS }}>{f.grupo}</td>
                       <td style={{ padding: '7px 10px', color: GRIS }}>{f.pdf || ''}</td>
+                      <td style={{ padding: '7px 10px', color: GRIS }}>{fmtFecha(f.fecha_captura)}</td>
                       <td style={{ padding: '7px 10px', textAlign: 'right' }}>{mny(f.importe)}</td>
                     </tr>
                   ))}
