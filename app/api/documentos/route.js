@@ -12,7 +12,9 @@ export async function GET(request) {
 
   const supabase = getSupabaseAdmin();
   let q = supabase.from('documentos').select('*', { count: 'exact' }).order('fecha_subida', { ascending: false });
-  if (folio) q = q.ilike('folio_detectado', `%${folio}%`);
+  // Busca también en el nombre del archivo: un PDF con varios folios no queda
+  // identificado y sería invisible buscando solo por folio_detectado.
+  if (folio) q = q.or(`folio_detectado.ilike.%${folio}%,nombre_original.ilike.%${folio}%`);
   if (grupo) q = q.eq('grupo', grupo);
   if (delegacion) q = q.eq('delegacion', delegacion);
   if (identificado === '1') q = q.eq('identificado', true);
