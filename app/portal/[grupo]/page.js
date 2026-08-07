@@ -487,18 +487,18 @@ export default function PortalGrupo() {
           {kpiCargando || !kpiData ? <p className="muted">Cargando…</p> : (
             <>
               <div className="card" style={{ padding: '22px 26px' }}>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -8 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={exportarKpi}>Descargar Excel</button>
-                </div>
                 <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 230 }}>
-                    <div className="muted" style={{ fontSize: 12, letterSpacing: '0.02em' }}>CARTERA GESTIONADA</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <div className="muted" style={{ fontSize: 12, letterSpacing: '0.02em' }}>CARTERA GESTIONADA</div>
+                    </div>
                     <div style={{ fontSize: 34, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.15, marginTop: 3 }}>{mny(kpiData.importe_total)}</div>
                     <div className="muted" style={{ fontSize: 12.5, marginTop: 3 }}>
                       {kpiData.total} altas · {(kpiData.top_proveedores || []).length} laboratorio(s) · {(kpiData.por_delegacion || []).length} delegación(es)
                     </div>
                   </div>
-                  <div className="kpi-ring-wrap" style={{ width: 128, height: 128, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0, marginRight: 8 }}>
+                  <div className="kpi-ring-wrap" style={{ width: 124, height: 124 }}>
                     <svg viewBox="0 0 160 160">
                       <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green-soft)" strokeWidth="14" />
                       <circle cx="80" cy="80" r="68" fill="none" stroke="var(--green)" strokeWidth="14" strokeLinecap="round"
@@ -511,9 +511,11 @@ export default function PortalGrupo() {
                       <div className="kpi-ring-lbl">de las altas</div>
                     </div>
                   </div>
+                  <button className="btn btn-ghost btn-sm" onClick={exportarKpi}>Descargar Excel</button>
+                  </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--line)', marginTop: 18, paddingTop: 16, display: 'flex', gap: 34, flexWrap: 'wrap' }}>
+                <div style={{ borderTop: '1px solid var(--line)', marginTop: 24, paddingTop: 22, display: 'flex', gap: 40, flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 200 }}>
                     <div style={{ fontSize: 12.5, color: 'var(--green)', fontWeight: 600 }}>● Con contra recibo emitido</div>
                     <div style={{ fontSize: 23, fontWeight: 600, color: 'var(--green)', marginTop: 3 }}>{mny(kpiData.importe_con_cr)}</div>
