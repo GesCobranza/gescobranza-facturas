@@ -158,6 +158,51 @@ export default function PortalGrupo() {
     setExportando(false);
   }
 
+  // Baja las tres tablas del panel en un solo archivo, respetando los filtros activos
+  function exportarKpi() {
+    if (!kpiData) return;
+    const wb = XLSX.utils.book_new();
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) + '%' : '0%');
+
+    const impLab = (kpiData.top_proveedores || []).map((p) => ({
+      'Laboratorio': p.prov_nombre,
+      'Con CR': Number(p.importe_con_cr || 0),
+      'Sin CR': Number(p.importe_total || 0) - Number(p.importe_con_cr || 0),
+      'Total': Number(p.importe_total || 0),
+      '% avance': pct(Number(p.importe_con_cr || 0), Number(p.importe_total || 0)),
+    }));
+    impLab.push({
+      'Laboratorio': 'TOTAL',
+      'Con CR': Number(kpiData.importe_con_cr || 0),
+      'Sin CR': Number(kpiData.importe_total || 0) - Number(kpiData.importe_con_cr || 0),
+      'Total': Number(kpiData.importe_total || 0),
+      '% avance': pct(Number(kpiData.importe_con_cr || 0), Number(kpiData.importe_total || 0)),
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(impLab), 'Importe por laboratorio');
+
+    const altLab = (kpiData.top_proveedores || []).map((p) => ({
+      'Laboratorio': p.prov_nombre,
+      'Con CR': p.con_cr,
+      'Sin CR': p.total - p.con_cr,
+      'Total': p.total,
+    }));
+    altLab.push({ 'Laboratorio': 'TOTAL', 'Con CR': kpiData.con_cr, 'Sin CR': kpiData.sin_cr, 'Total': kpiData.total });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(altLab), 'Altas por laboratorio');
+
+    const porDel = (kpiData.por_delegacion || []).map((d) => ({
+      'Delegación': d.delegacion,
+      'Altas': d.total,
+      'Altas con CR': d.con_cr,
+      'Importe con CR': Number(d.importe_con_cr || 0),
+      'Importe sin CR': Number(d.importe_total || 0) - Number(d.importe_con_cr || 0),
+      'Importe total': Number(d.importe_total || 0),
+      '% avance': pct(Number(d.importe_con_cr || 0), Number(d.importe_total || 0)),
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(porDel), 'Por delegación');
+
+    XLSX.writeFile(wb, `indicadores-${grupo}.xlsx`);
+  }
+
   function exportarVencidos() {
     if (!calData || !calData.vencidos || calData.vencidos.length === 0) return;
     const datos = calData.vencidos.map((v) => ({
@@ -442,6 +487,9 @@ export default function PortalGrupo() {
           {kpiCargando || !kpiData ? <p className="muted">Cargando…</p> : (
             <>
               <div className="card" style={{ padding: '22px 26px' }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: -8 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={exportarKpi}>Descargar Excel</button>
+                </div>
                 <div style={{ display: 'flex', gap: 28, alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 230 }}>
                     <div className="muted" style={{ fontSize: 12, letterSpacing: '0.02em' }}>CARTERA GESTIONADA</div>
