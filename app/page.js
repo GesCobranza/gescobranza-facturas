@@ -416,7 +416,7 @@ export default function Home() {
       const d2 = await r2.json();
       setLoteFilas((prev) => prev.map((f, i) => {
         if (i !== idx) return f;
-        const nueva = { ...f, info5005: (d2 && d2.ok ? d2 : null) };
+        const nueva = { ...f, info5005: (d2 && d2.ok ? d2 : null), candidatoIdx: null };
         // El importe lo pone el IMSS; el capturista solo lo cambia si la factura difiere
         if (d2 && d2.ok && d2.encontrada && d2.candidatos.length === 1) {
           const v = Number(d2.candidatos[0].importe || 0);
@@ -437,19 +437,47 @@ export default function Home() {
     }
   }
 
+  // Devuelve el candidato del 5005 que aplica a un renglón: el elegido a mano,
+  // o el único cuando el alta no está repetida.
+  function candidatoDeFila(f) {
+    if (!f || !f.info5005 || !f.info5005.encontrada || !f.info5005.candidatos.length) return null;
+    if (typeof f.candidatoIdx === 'number') return f.info5005.candidatos[f.candidatoIdx];
+    if (f.info5005.candidatos.length === 1) return f.info5005.candidatos[0];
+    return null;
+  }
+
+  // Cuando el IMSS reutiliza un alta, el capturista elige cuál corresponde
+  function elegirCandidatoLote(idx, i) {
+    setLoteFilas((prev) => prev.map((f, k) => {
+      if (k !== idx) return f;
+      const c = f.info5005.candidatos[i];
+      const v = Number(c.importe || 0);
+      return { ...f, candidatoIdx: i, importeRaw: v, importeTexto: v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) };
+    }));
+    // Si es el primer renglón, define el proveedor y la delegación del susceptible
+    if (idx === 0) {
+      const c = loteFilas[0].info5005.candidatos[i];
+      if (c.grupo) setGrupo(c.grupo);
+      if (c.numeroCatalogo) setEmpresaNumero(c.numeroCatalogo);
+      if (c.delegacion) setDelegacion(c.delegacion);
+    }
+  }
+
   // Trae el importe del 5005 a un renglón del lote
   function usarImporte5005Lote(idx) {
     setLoteFilas((prev) => prev.map((f, i) => {
       if (i !== idx || !f.info5005 || !f.info5005.encontrada || !f.info5005.candidatos.length) return f;
-      const valor = Number(f.info5005.candidatos[0].importe || 0);
+      const cd = candidatoDeFila(f);
+      if (!cd) return f;
+      const valor = Number(cd.importe || 0);
       return { ...f, importeRaw: valor, importeTexto: valor.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) };
     }));
   }
 
   // Una fila estorba si el IMSS dice que es de otro proveedor o de otra delegación
   function filaLoteDiscrepa(f) {
-    if (!f.info5005 || !f.info5005.encontrada || !f.info5005.candidatos.length) return false;
-    const c = f.info5005.candidatos[0];
+    const c = candidatoDeFila(f);
+    if (!c) return false;
     const provDistinto = empresaObj && c.provNorm && String(empresaObj.numero).replace(/^0+/, '') !== c.provNorm;
     const delegDistinta = c.delegacion && delegacion && c.delegacion !== delegacion;
     return !!(provDistinto || delegDistinta);
@@ -457,7 +485,8 @@ export default function Home() {
 
   const loteTodoListo = loteFilas.length > 0
     && grupo && empresaObj && delegacion && pdf
-    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && FORMATO_ALTA.test(f.alta.trim()) && validarAltaLote(f.alta).ok && !f.existeEnServidor && !filaLoteDiscrepa(f));
+    && loteFilas.every((f) => f.alta && f.importeRaw > 0 && FORMATO_ALTA.test(f.alta.trim()) && validarAltaLote(f.alta).ok && !f.existeEnServidor && !filaLoteDiscrepa(f)
+      && !(f.info5005 && f.info5005.encontrada && f.info5005.ambigua && typeof f.candidatoIdx !== 'number'));
 
   const loteAltasDuplicadasEntreSi = (() => {
     const vistos = new Set();
@@ -1180,7 +1209,7 @@ async function cruzarCon5005() {
                 <tbody>
                   {loteFilas.map((f, idx) => {
                     const dup = loteAltasDuplicadasEntreSi.has(f.alta.trim().toLowerCase());
-                    const c5 = f.info5005 && f.info5005.encontrada && f.info5005.candidatos.length > 0 ? f.info5005.candidatos[0] : null;
+                    const c5 = candidatoDeFila(f);
                     return (
                       <tr key={idx}>
                         <td className="muted">{idx + 1}</td>
@@ -1210,7 +1239,19 @@ async function cruzarCon5005() {
                             <span className="hint" style={{ color: 'var(--red)', fontWeight: 600 }}>✖ El IMSS dice {c5.delegacion} — no puede ir en este susceptible</span>
                           )}
                           {f.info5005 && f.info5005.encontrada && f.info5005.ambigua && (
-                            <span className="hint" style={{ color: 'var(--amber)' }}>⚠ Esta alta aparece {f.info5005.candidatos.length} veces en el 5005 — verifica</span>
+                            <div style={{ marginTop: 6, padding: '8px 10px', background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 7 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 600, color: '#9A5B00', marginBottom: 5 }}>
+                                ⚠ Esta alta aparece {f.info5005.candidatos.length} veces en el 5005 — elige la que corresponde
+                              </div>
+                              {f.info5005.candidatos.map((c, ci) => (
+                                <button key={ci} type="button"
+                                  className={f.candidatoIdx === ci ? 'btn btn-primary btn-sm' : 'btn btn-ghost btn-sm'}
+                                  style={{ display: 'block', width: '100%', textAlign: 'left', marginTop: 4, fontSize: 11.5 }}
+                                  onClick={() => elegirCandidatoLote(idx, ci)}>
+                                  <b>{c.empresa || ('No. ' + c.provNo)}</b>{c.grupo ? ' · ' + c.grupo : ''} · {Number(c.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                                </button>
+                              ))}
+                            </div>
                           )}
                         </td>
                         <td>
