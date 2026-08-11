@@ -454,9 +454,11 @@ export default function Home() {
       const v = Number(c.importe || 0);
       return { ...f, candidatoIdx: i, importeRaw: v, importeTexto: v.toLocaleString('es-MX', { style: 'currency', currency: 'MXN' }) };
     }));
-    // Si es el primer renglón, define el proveedor y la delegación del susceptible
-    if (idx === 0) {
-      const c = loteFilas[0].info5005.candidatos[i];
+    // El proveedor y la delegación del susceptible se toman del renglón elegido:
+    // no solo del primero, porque puede resolverse cualquiera antes que los demás.
+    const fila = loteFilas[idx];
+    const c = fila && fila.info5005 && fila.info5005.candidatos ? fila.info5005.candidatos[i] : null;
+    if (c) {
       if (c.grupo) setGrupo(c.grupo);
       if (c.numeroCatalogo) setEmpresaNumero(c.numeroCatalogo);
       if (c.delegacion) setDelegacion(c.delegacion);
