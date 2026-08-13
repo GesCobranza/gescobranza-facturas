@@ -40,6 +40,7 @@ export default function PortalGrupo() {
   const [calCargando, setCalCargando] = useState(false);
   const [calFiltroProvNo, setCalFiltroProvNo] = useState('');
   const [calFiltroDeleg, setCalFiltroDeleg] = useState('');
+  const [calDiasAtras, setCalDiasAtras] = useState(30);
   const CONSULTA_POR_PAGINA = 50;
 
   // ---- Panel KPI ----
@@ -279,8 +280,6 @@ export default function PortalGrupo() {
     });
     return grupos;
   }
-
-  const [calDiasAtras, setCalDiasAtras] = useState(30);
 
   async function cargarCalendario() {
     setCalCargando(true);
