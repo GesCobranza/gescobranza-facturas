@@ -764,11 +764,11 @@ export default function PortalGrupo() {
                   const paso = (ANCHO - 46) / dias.length;
                   return (
                     <div style={{ overflowX: 'auto', marginTop: 16, marginBottom: 18 }}>
-                      <svg width={ANCHO} height={AL + 52} style={{ marginTop: 6 }} role="img" aria-label={'Depósitos del IMSS en los últimos ' + calDiasAtras + ' días'}>
+                      <svg width={ANCHO} height={AL + 66} style={{ marginTop: 6 }} role="img" aria-label={'Depósitos del IMSS en los últimos ' + calDiasAtras + ' días'}>
                         {[0, 0.25, 0.5, 0.75, 1].map((f, i) => (
                           <g key={i}>
-                            <line x1="46" y1={AL - AL * f} x2={ANCHO} y2={AL - AL * f} stroke="#EEEEEE" strokeWidth="1" />
-                            <text x="0" y={AL - AL * f + 4} fontSize="10" fill="#8B8D93">${(max * f / 1000000).toFixed(1)}M</text>
+                            <line x1="46" y1={12 + AL - AL * f} x2={ANCHO} y2={12 + AL - AL * f} stroke="#EEEEEE" strokeWidth="1" />
+                            <text x="0" y={12 + AL - AL * f + 4} fontSize="10" fill="#8B8D93">${(max * f / 1000000).toFixed(1)}M</text>
                           </g>
                         ))}
                         {dias.map((d, i) => {
@@ -776,11 +776,11 @@ export default function PortalGrupo() {
                           const h = max ? (v / max) * AL : 0;
                           return (
                             <g key={d.fecha}>
-                              <rect x={46 + i * paso + (paso - bw) / 2} y={AL - h} width={bw} height={Math.max(h, 1)} fill="var(--green)" rx="2">
+                              <rect x={46 + i * paso + (paso - bw) / 2} y={12 + AL - h} width={bw} height={Math.max(h, 1)} fill="var(--green)" rx="2">
                                 <title>{fmtF(d.fecha) + ' — ' + mny(v) + ' (' + d.contra_recibos + ' CR)'}</title>
                               </rect>
                               {(dias.length <= 22 || i % 2 === 0) && (
-                                <text x={46 + i * paso + paso / 2} y={AL + 16} fontSize="9.5" fill="#8B8D93" textAnchor="middle">
+                                <text x={46 + i * paso + paso / 2} y={12 + AL + 16} fontSize="9.5" fill="#8B8D93" textAnchor="middle">
                                   {d.fecha.slice(8, 10) + '/' + d.fecha.slice(5, 7)}
                                 </text>
                               )}
