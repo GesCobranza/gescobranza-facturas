@@ -26,6 +26,7 @@ export async function POST(request) {
     const delegacion = body.delegacion ? String(body.delegacion).trim() : null;
     const provNo = body.provNo ? normalizarProvNo(body.provNo) : null;
     const semanas = Math.min(12, Math.max(1, parseInt(body.semanas || 4, 10)));
+    const diasAtras = Math.min(365, Math.max(1, parseInt(body.diasAtras || 30, 10)));
 
     // p_grupo siempre es el grupo YA AUTENTICADO — nunca uno enviado libremente por el navegador
     const { data, error } = await supabase.rpc('calendario_cobranza', {
@@ -33,6 +34,7 @@ export async function POST(request) {
       p_delegacion: delegacion,
       p_provno: provNo,
       p_semanas: semanas,
+      p_dias_atras: diasAtras,
     });
 
     if (error) throw error;
