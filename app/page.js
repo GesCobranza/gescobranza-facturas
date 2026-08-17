@@ -596,15 +596,34 @@ export default function Home() {
       return next;
     });
   }
+  // Al marcar la salida se crea el paquete de esa delegación, sin guía.
+  // El número se captura después en «Registrar envío».
   async function marcarSeleccionadasComoEnviadas() {
     if (seleccionados.size === 0) return;
-    await fetch('/api/facturas', {
-      method: 'PATCH',
+    if (!gFiltroDeleg) {
+      alert('Elige primero una delegación: cada paquete lleva su propia guía.');
+      return;
+    }
+    const fecha = new Date().toISOString().slice(0, 10);
+    if (!window.confirm('Se registrará un paquete a ' + gFiltroDeleg + ' con ' + seleccionados.size + ' factura(s), con fecha de hoy.\n\nEl número de guía se captura después en «Registrar envío».')) return;
+
+    const res = await fetch('/api/envios', {
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ accion: 'marcarEnviadas', ids: Array.from(seleccionados) }),
+      body: JSON.stringify({
+        delegacion: gFiltroDeleg,
+        guia: '',
+        fechaEnvio: fecha,
+        enviadoPor: capturista,
+        ids: Array.from(seleccionados),
+      }),
     });
+    const d = await res.json();
+    if (!d.ok) { alert(d.error || 'No se pudo registrar el envío.'); return; }
+
     setSeleccionados(new Set());
     await cargarSeguimiento();
+    alert('✓ Paquete registrado: ' + d.marcadas + ' factura(s) a ' + gFiltroDeleg + '.\n\nCaptura la guía en «Registrar envío».');
   }
   async function quitarEnviada(id) {
     await fetch('/api/facturas', {
@@ -1745,8 +1764,7 @@ async function cruzarCon5005() {
             {seleccionados.size > 0 && (
               <div className="alert ok" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <span>{seleccionados.size} seleccionada(s) · Suma: ${sumaSeleccionados.toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span>
-                <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas a gestor</button>
-                <button className="btn btn-primary btn-sm" onClick={() => setComprobantePanelAbierto((v) => !v)}>Adjuntar comprobante CR</button>
+                <button className="btn btn-primary btn-sm" onClick={marcarSeleccionadasComoEnviadas}>Marcar como enviadas</button>
                 <button className="btn btn-ghost btn-sm" onClick={() => setSeleccionados(new Set())}>Cancelar selección</button>
               </div>
             )}
