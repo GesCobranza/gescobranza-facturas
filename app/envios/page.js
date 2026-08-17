@@ -35,6 +35,8 @@ export default function RegistrarEnvio() {
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
+  const [sinGuia, setSinGuia] = useState([]);
+  const [guiaPend, setGuiaPend] = useState({});
 
   useEffect(() => {
     fetch('/api/catalogos')
@@ -45,6 +47,7 @@ export default function RegistrarEnvio() {
     const q = new URLSearchParams(window.location.search);
     const desdeLiga = q.get('delegacion');
     if (desdeLiga) setDelegacion(desdeLiga);
+    cargarPendientes();
   }, []);
 
   useEffect(() => {
@@ -84,6 +87,37 @@ export default function RegistrarEnvio() {
     setSeleccion(sel);
   }
 
+  // Paquetes que ya salieron y siguen esperando su número de guía
+  async function cargarPendientes() {
+    try {
+      const r = await fetch('/api/envios?delegacion=' + encodeURIComponent('__pendientes__'));
+      const d = await r.json();
+      setSinGuia(d.ok ? (d.sinGuia || []) : []);
+    } catch (e) {
+      setSinGuia([]);
+    }
+  }
+
+  async function guardarGuia(envioId) {
+    const g = String(guiaPend[envioId] || '').trim();
+    if (!g) return;
+    const res = await fetch('/api/envios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accion: 'asignar_guia', envioId: envioId, guia: g }),
+    });
+    const d = await res.json();
+    if (!d.ok) { setMensaje({ tipo: 'err', txt: d.error || 'No se pudo guardar la guía.' }); return; }
+    setGuiaPend({ ...guiaPend, [envioId]: '' });
+    setMensaje({ tipo: 'ok', txt: '✓ Guía registrada.' });
+    cargarPendientes();
+  }
+
+  function diasDesde(iso) {
+    if (!iso) return 0;
+    return Math.round((new Date() - new Date(iso + 'T12:00:00')) / 86400000);
+  }
+
   async function registrar() {
     if (!listo) return;
     setGuardando(true);
@@ -105,6 +139,7 @@ export default function RegistrarEnvio() {
           ? ' Atención: se pidieron ' + d.solicitadas + ' pero solo se marcaron ' + d.marcadas + ' (alguna ya tenía envío registrado).'
           : '';
         setMensaje({ tipo: 'ok', txt: '✓ Envío registrado: ' + d.marcadas + ' facturas' + (guia ? ' · guía ' + guia : '') + '.' + aviso });
+        cargarPendientes();
         setGuia('');
         setNotas('');
         const r2 = await fetch('/api/envios?delegacion=' + encodeURIComponent(delegacion));
@@ -133,8 +168,49 @@ export default function RegistrarEnvio() {
         Elige la delegación, captura la guía y marca las facturas que van en el paquete.
       </p>
 
+      {sinGuia.length > 0 && (
+        <div style={{ border: '1px solid #EFDCB3', borderRadius: 10, padding: 20, background: '#FBF0DD', marginBottom: 18 }}>
+          <h2 style={{ fontSize: 15, color: '#9A5B00', marginTop: 0, marginBottom: 4 }}>
+            {sinGuia.length} paquete(s) esperando su guía
+          </h2>
+          <p style={{ fontSize: 12.5, color: '#9A5B00', margin: '0 0 14px' }}>
+            Ya salieron desde Seguimiento Envío. Captura el número que te dio la paquetería.
+          </p>
+          {sinGuia.map((e) => {
+            const d = diasDesde(e.fecha_envio);
+            return (
+              <div key={e.id} style={{ background: '#fff', border: '1px solid #EFDCB3', borderRadius: 8, padding: '12px 14px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY }}>{e.delegacion}</div>
+                    <div style={{ fontSize: 12, color: GRIS, marginTop: 2 }}>
+                      {e.facturas} factura(s) · {Number(e.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
+                      {' · salió el '}{String(e.fecha_envio).slice(8, 10)}/{String(e.fecha_envio).slice(5, 7)}
+                      {d > 1 && <b style={{ color: d > 3 ? '#C23B3B' : '#9A5B00' }}>{' · hace ' + d + ' días'}</b>}
+                    </div>
+                    {e.enviado_por && <div style={{ fontSize: 11.5, color: GRIS }}>enviado por {e.enviado_por}</div>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+                    <input value={guiaPend[e.id] || ''} onChange={(ev) => setGuiaPend({ ...guiaPend, [e.id]: ev.target.value })}
+                      onKeyDown={(ev) => { if (ev.key === 'Enter') guardarGuia(e.id); }}
+                      placeholder="No. de guía" style={{ width: 160, fontSize: 13.5 }} />
+                    <button type="button" onClick={() => guardarGuia(e.id)} disabled={!String(guiaPend[e.id] || '').trim()}
+                      style={{ padding: '9px 16px', border: 'none', borderRadius: 7,
+                        background: String(guiaPend[e.id] || '').trim() ? VERDE : '#B9BCC2',
+                        color: '#fff', fontSize: 13, fontWeight: 600,
+                        cursor: String(guiaPend[e.id] || '').trim() ? 'pointer' : 'default' }}>
+                      Guardar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, padding: 20, background: '#fff', marginBottom: 18 }}>
-        <h2 style={{ fontSize: 15, color: NAVY, marginTop: 0, marginBottom: 14 }}>Datos del paquete</h2>
+        <h2 style={{ fontSize: 15, color: NAVY, marginTop: 0, marginBottom: 14 }}>Registrar un paquete nuevo</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
           <div>
             <label style={etiqueta}>Delegación</label>
