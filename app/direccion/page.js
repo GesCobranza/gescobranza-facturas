@@ -251,6 +251,75 @@ export default function Direccion() {
           </div>
 
           <div style={card}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Envíos a delegaciones</div>
+                <div style={{ fontSize: 12, color: GRIS, marginBottom: 8 }}>Paquetería registrada en el periodo</div>
+              </div>
+              {Number(p.sin_registrar) > 0 && (
+                <div style={{ fontSize: 11.5, color: AMBAR, background: '#FBF0DD', padding: '5px 10px', borderRadius: 6 }}>
+                  ⚠ {p.sin_registrar} factura(s) marcadas como enviadas sin guía registrada
+                </div>
+              )}
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+              <thead><tr>
+                <th style={th}>Responsable</th>
+                <th style={{ ...th, textAlign: 'right' }}>Paquetes</th>
+                <th style={{ ...th, textAlign: 'right' }}>Facturas</th>
+                <th style={{ ...th, textAlign: 'right' }}>Importe</th>
+                <th style={{ ...th, textAlign: 'right' }}>Jornadas</th>
+                <th style={{ ...th, textAlign: 'right' }}>Por jornada</th>
+                <th style={{ ...th, textAlign: 'right' }}>Su mejor día</th>
+              </tr></thead>
+              <tbody>
+                {(p.envios_resumen || []).map((e) => (
+                  <tr key={e.enviado_por}>
+                    <td style={{ ...td, fontWeight: 600 }}>{e.enviado_por}</td>
+                    <td style={{ ...td, textAlign: 'right', color: GRIS }}>{e.paquetes}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{e.facturas}</td>
+                    <td style={{ ...td, textAlign: 'right', color: VERDE }}>{mny(e.importe)}</td>
+                    <td style={{ ...td, textAlign: 'right', color: GRIS }}>{e.jornadas}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{e.por_jornada}</td>
+                    <td style={{ ...td, textAlign: 'right', color: GRIS }}>{e.mejor_jornada}</td>
+                  </tr>
+                ))}
+                {(p.envios_resumen || []).length === 0 && (
+                  <tr><td colSpan={7} style={{ ...td, color: GRIS }}>Sin envíos registrados en este periodo.</td></tr>
+                )}
+              </tbody>
+            </table>
+
+            {(p.envios_dia || []).length > 0 && (
+              <>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: NAVY, marginBottom: 6 }}>Jornadas de envío</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>
+                    <th style={th}>Fecha</th>
+                    <th style={th}>Responsable</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Paquetes</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Delegaciones</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Facturas</th>
+                    <th style={{ ...th, textAlign: 'right' }}>Importe</th>
+                  </tr></thead>
+                  <tbody>
+                    {(p.envios_dia || []).map((e) => (
+                      <tr key={e.fecha}>
+                        <td style={td}>{fmtD(e.fecha)}</td>
+                        <td style={{ ...td, color: GRIS }}>{e.quien}</td>
+                        <td style={{ ...td, textAlign: 'right', color: GRIS }}>{e.paquetes}</td>
+                        <td style={{ ...td, textAlign: 'right', color: GRIS }}>{e.delegaciones}</td>
+                        <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{e.facturas}</td>
+                        <td style={{ ...td, textAlign: 'right', color: VERDE }}>{mny(e.importe)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+
+          <div style={card}>
             <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Dónde presionar</div>
             <div style={{ fontSize: 12, color: GRIS, marginBottom: 8 }}>Delegaciones con más dinero sin contra recibo</div>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
