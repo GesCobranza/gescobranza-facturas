@@ -6,10 +6,16 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const dias = Math.min(180, Math.max(7, parseInt(searchParams.get('dias') || '30', 10)));
+    const dias = Math.min(365, Math.max(1, parseInt(searchParams.get('dias') || '30', 10)));
+    const desde = searchParams.get('desde') || null;
+    const hasta = searchParams.get('hasta') || null;
 
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.rpc('pulso_operativo', { p_dias: dias });
+    const { data, error } = await supabase.rpc('pulso_operativo', {
+      p_dias: dias,
+      p_desde: desde,
+      p_hasta: hasta,
+    });
     if (error) throw error;
 
     return NextResponse.json({ ok: true, pulso: data });
