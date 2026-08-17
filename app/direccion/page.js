@@ -30,17 +30,23 @@ export default function Direccion() {
   const [autenticado, setAutenticado] = useState(false);
   const [error, setError] = useState('');
   const [dias, setDias] = useState(30);
+  const [rangoLibre, setRangoLibre] = useState(false);
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const [pulso, setPulso] = useState(null);
   const [cargando, setCargando] = useState(false);
 
   useEffect(() => {
     if (autenticado) cargar();
-  }, [autenticado, dias]);
+  }, [autenticado, dias, rangoLibre, desde, hasta]);
 
   async function cargar() {
     setCargando(true);
     try {
-      const res = await fetch('/api/pulso?dias=' + dias);
+      const q = rangoLibre && desde && hasta
+        ? '?desde=' + desde + '&hasta=' + hasta
+        : '?dias=' + dias;
+      const res = await fetch('/api/pulso' + q);
       const d = await res.json();
       setPulso(d.ok ? d.pulso : null);
     } catch (e) {
@@ -99,15 +105,29 @@ export default function Direccion() {
         <div>
           <div style={{ fontSize: 11, letterSpacing: 1, color: VERDE, fontWeight: 700 }}>GES COBRANZA</div>
           <h1 style={{ fontSize: 26, color: NAVY, margin: '2px 0 2px' }}>Tablero de dirección</h1>
-          <p style={{ fontSize: 12.5, color: GRIS, margin: 0 }}>Corte al {fmtD(p.hoy)} · últimos {dias} días</p>
+          <p style={{ fontSize: 12.5, color: GRIS, margin: 0 }}>
+            {p.desde ? 'Del ' + fmtD(p.desde) + ' al ' + fmtD(p.hasta) : 'Corte al ' + fmtD(p.hoy)}
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {[7, 30, 60, 90].map((d) => (
-            <button key={d} onClick={() => setDias(d)}
-              style={{ padding: '7px 13px', border: '1px solid ' + LINEA, borderRadius: 7, background: dias === d ? NAVY : '#fff', color: dias === d ? '#fff' : NAVY, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            <button key={d} onClick={() => { setDias(d); setRangoLibre(false); }}
+              style={{ padding: '7px 13px', border: '1px solid ' + LINEA, borderRadius: 7, background: (!rangoLibre && dias === d) ? NAVY : '#fff', color: (!rangoLibre && dias === d) ? '#fff' : NAVY, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
               {d} días
             </button>
           ))}
+          <button onClick={() => setRangoLibre(!rangoLibre)}
+            style={{ padding: '7px 13px', border: '1px solid ' + LINEA, borderRadius: 7, background: rangoLibre ? NAVY : '#fff', color: rangoLibre ? '#fff' : NAVY, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            Rango
+          </button>
+          {rangoLibre && (
+            <>
+              <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
+                style={{ padding: '6px 9px', border: '1px solid ' + LINEA, borderRadius: 7, fontSize: 12.5 }} />
+              <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)}
+                style={{ padding: '6px 9px', border: '1px solid ' + LINEA, borderRadius: 7, fontSize: 12.5 }} />
+            </>
+          )}
         </div>
       </div>
 
@@ -117,14 +137,14 @@ export default function Direccion() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
             <div style={card}>
-              <div style={{ fontSize: 12, color: GRIS }}>Contra recibos hoy</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: NAVY, marginTop: 3 }}>{p.emitidos_hoy}</div>
-              <div style={{ fontSize: 11.5, color: GRIS }}>emitidos por el IMSS</div>
+              <div style={{ fontSize: 12, color: GRIS }}>Emitido hoy</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: NAVY, marginTop: 3 }}>{mmm(p.importe_hoy)}</div>
+              <div style={{ fontSize: 11.5, color: GRIS }}>{p.emitidos_hoy} contra recibos</div>
             </div>
             <div style={card}>
-              <div style={{ fontSize: 12, color: GRIS }}>Esta semana</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: VERDE, marginTop: 3 }}>{p.emitidos_semana}</div>
-              <div style={{ fontSize: 11.5, color: GRIS }}>{mmm(p.importe_semana)} en importe</div>
+              <div style={{ fontSize: 12, color: GRIS }}>Emitido en el periodo</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: VERDE, marginTop: 3 }}>{mmm(p.importe_periodo)}</div>
+              <div style={{ fontSize: 11.5, color: GRIS }}>{p.emitidos_periodo} contra recibos</div>
             </div>
             <div style={card}>
               <div style={{ fontSize: 12, color: GRIS }}>Ritmo de captura</div>
@@ -139,31 +159,31 @@ export default function Direccion() {
           </div>
 
           {serieE.length > 0 && (() => {
-            const max = Math.max(...serieE.map((x) => Number(x.crs || 0))) * 1.12;
+            const max = Math.max(...serieE.map((x) => Number(x.importe || 0))) * 1.12;
             const AL = 150, ANCHO = Math.max(560, serieE.length * 30);
-            const paso = (ANCHO - 40) / serieE.length;
+            const paso = (ANCHO - 52) / serieE.length;
             const bw = Math.min(24, paso - 5);
             return (
               <div style={card}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Contra recibos emitidos por día</div>
-                <div style={{ fontSize: 12, color: GRIS, marginBottom: 10 }}>Lo que el IMSS liberó, día por día</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Importe emitido por día</div>
+                <div style={{ fontSize: 12, color: GRIS, marginBottom: 10 }}>Lo que el IMSS liberó en contra recibos, día por día</div>
                 <div style={{ overflowX: 'auto' }}>
                   <svg width={ANCHO} height={AL + 56}>
                     {[0, 0.5, 1].map((f, i) => (
                       <g key={i}>
-                        <line x1="40" y1={12 + AL - AL * f} x2={ANCHO} y2={12 + AL - AL * f} stroke="#EEEEEE" />
-                        <text x="0" y={12 + AL - AL * f + 4} fontSize="10" fill="#8B8D93">{Math.round(max * f)}</text>
+                        <line x1="52" y1={12 + AL - AL * f} x2={ANCHO} y2={12 + AL - AL * f} stroke="#EEEEEE" />
+                        <text x="0" y={12 + AL - AL * f + 4} fontSize="10" fill="#8B8D93">{'$' + (max * f / 1000000).toFixed(1) + 'M'}</text>
                       </g>
                     ))}
                     {serieE.map((x, i) => {
-                      const h = max ? (Number(x.crs) / max) * AL : 0;
+                      const h = max ? (Number(x.importe) / max) * AL : 0;
                       return (
                         <g key={x.fecha}>
-                          <rect x={40 + i * paso + (paso - bw) / 2} y={12 + AL - h} width={bw} height={Math.max(h, 1)} fill={VERDE} rx="2">
-                            <title>{fmtD(x.fecha) + ' — ' + x.crs + ' CR · ' + mmm(x.importe)}</title>
+                          <rect x={52 + i * paso + (paso - bw) / 2} y={12 + AL - h} width={bw} height={Math.max(h, 1)} fill={VERDE} rx="2">
+                            <title>{fmtD(x.fecha) + ' — ' + mny(x.importe) + ' · ' + x.crs + ' CR'}</title>
                           </rect>
                           {(serieE.length <= 24 || i % 2 === 0) && (
-                            <text x={40 + i * paso + paso / 2} y={12 + AL + 16} fontSize="9.5" fill="#8B8D93" textAnchor="middle">{fmtD(x.fecha)}</text>
+                            <text x={52 + i * paso + paso / 2} y={12 + AL + 16} fontSize="9.5" fill="#8B8D93" textAnchor="middle">{fmtD(x.fecha)}</text>
                           )}
                         </g>
                       );
@@ -173,6 +193,37 @@ export default function Direccion() {
               </div>
             );
           })()}
+
+          <div style={card}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Emitido por cliente</div>
+            <div style={{ fontSize: 12, color: GRIS, marginBottom: 8 }}>Lo que el IMSS liberó en el periodo</div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr>
+                <th style={th}>Cliente</th>
+                <th style={{ ...th, textAlign: 'right' }}>Contra recibos</th>
+                <th style={{ ...th, textAlign: 'right' }}>Importe</th>
+                <th style={{ ...th, textAlign: 'right' }}>% del total</th>
+              </tr></thead>
+              <tbody>
+                {(p.por_grupo || []).map((g) => (
+                  <tr key={g.grupo}>
+                    <td style={{ ...td, fontWeight: 600 }}>{g.grupo}</td>
+                    <td style={{ ...td, textAlign: 'right', color: GRIS }}>{g.crs}</td>
+                    <td style={{ ...td, textAlign: 'right', fontWeight: 600, color: VERDE }}>{mny(g.importe)}</td>
+                    <td style={{ ...td, textAlign: 'right', color: GRIS }}>
+                      {p.importe_periodo ? Math.round((Number(g.importe) / Number(p.importe_periodo)) * 100) : 0}%
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ background: VERDE, color: '#fff' }}>
+                  <td style={{ ...td, fontWeight: 700, border: 'none' }}>TOTAL</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, border: 'none' }}>{p.emitidos_periodo}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, border: 'none' }}>{mny(p.importe_periodo)}</td>
+                  <td style={{ ...td, textAlign: 'right', fontWeight: 700, border: 'none' }}>100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
           <div style={card}>
             <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Productividad del equipo</div>
