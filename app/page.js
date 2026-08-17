@@ -190,6 +190,29 @@ export default function Home() {
     }
   }
 
+  // Estatus del ciclo completo: de capturada a pagada
+  function estatusCiclo(f) {
+    if (f.cr_fuente === '4004' && f.cr_fecha_pago) {
+      const hoy = new Date().toISOString().slice(0, 10);
+      return f.cr_fecha_pago <= hoy
+        ? { txt: 'Pagada', cls: 'tag-green', det: 'ref. ' + (f.cr_referencia_pago || '—') }
+        : { txt: 'Pago confirmado', cls: 'tag-green', det: fmtFecha(f.cr_fecha_pago) };
+    }
+    if (f.cr_fuente === '1003' && f.cr_fecha_prog_pago) {
+      return { txt: 'Programada', cls: 'tag-blue', det: 'pago ' + fmtFecha(f.cr_fecha_prog_pago) };
+    }
+    if (f.tiene_cr) return { txt: 'Con CR', cls: 'tag-green', det: f.comprobante || '' };
+    if (f.envio_guia) return { txt: 'Enviada', cls: 'tag-amber', det: fmtFecha(f.envio_fecha) + ' · ' + f.envio_guia };
+    if (f.enviada_gestor) return { txt: 'Enviada', cls: 'tag-amber', det: f.fecha_envio ? fmtFecha(f.fecha_envio) : 'sin guía' };
+    return { txt: 'Por enviar', cls: 'tag-gray', det: '' };
+  }
+
+  function fmtFecha(iso) {
+    if (!iso) return '';
+    const x = String(iso).slice(0, 10).split('-');
+    return x.length === 3 ? x[2] + '/' + x[1] : '';
+  }
+
   async function cargarConsulta() {
     setConsultaCargando(true);
     const params = new URLSearchParams({ pagina: cPagina, porPagina: CONSULTA_POR_PAGINA });
@@ -686,7 +709,7 @@ export default function Home() {
     const data = await res.json();
     const filas = (data.facturas || []).map((f) => ({
       Alta: f.alta, Grupo: f.grupo, Empresa: f.empresa, Delegación: f.delegacion,
-      Importe: Number(f.importe), CR: f.tiene_cr ? 'Con CR' : 'Sin CR',
+      Importe: Number(f.importe), Estatus: estatusCiclo(f).txt, CR: f.tiene_cr ? 'Con CR' : 'Sin CR',
       Comprobante: f.comprobante || '', 'PDF/Susceptible': f.pdf || '', 'No. Factura': f.num_factura || '',
       Capturista: f.capturista || '', 'Fecha Captura': f.fecha_captura || '',
     }));
@@ -1400,7 +1423,7 @@ async function cruzarCon5005() {
           {consultaCargando ? <p className="muted">Cargando…</p> : (
             <>
               <table>
-                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>CR</th><th>Comprobante</th><th></th></tr></thead>
+                <thead><tr><th>Alta</th><th>PDF / Susceptible</th><th>Grupo</th><th>Empresa</th><th>Delegación</th><th>Importe</th><th>Fecha captura</th><th>Estatus</th><th>Comprobante</th><th></th></tr></thead>
                 <tbody>
                   {consultaData.facturas.map((f) => (
                     <tr key={f.id}>
@@ -1410,7 +1433,14 @@ async function cruzarCon5005() {
                           <td>{f.pdf ? <a href="#" onClick={(e) => { e.preventDefault(); abrirPdfSusceptible(f.pdf); }}>{f.pdf}</a> : '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td><input value={editImporte} onChange={(e) => setEditImporte(e.target.value)} style={{ maxWidth: 100 }} /></td>
                           <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
-                          <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                          <td>
+                            {(() => { const e = estatusCiclo(f); return (
+                              <>
+                                <span className={'tag ' + e.cls}>{e.txt}</span>
+                                {e.det && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{e.det}</div>}
+                              </>
+                            ); })()}
+                          </td>
                           <td>{f.comprobante || '—'}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <button className="btn btn-primary btn-sm" onClick={() => guardarEdicion(f.id)} disabled={editGuardando}>Guardar</button>{' '}
@@ -1423,7 +1453,14 @@ async function cruzarCon5005() {
                           <td>{f.alta}</td><td>{f.pdf ? <a href="#" onClick={(e) => { e.preventDefault(); abrirPdfSusceptible(f.pdf); }}>{f.pdf}</a> : '—'}</td><td>{f.grupo}</td><td>{f.empresa}</td><td>{f.delegacion}</td>
                           <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                           <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
-                          <td>{f.tiene_cr ? <span className="tag tag-green">Con CR</span> : <span className="tag tag-amber">Sin CR</span>}</td>
+                          <td>
+                            {(() => { const e = estatusCiclo(f); return (
+                              <>
+                                <span className={'tag ' + e.cls}>{e.txt}</span>
+                                {e.det && <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{e.det}</div>}
+                              </>
+                            ); })()}
+                          </td>
                          <td>
                             {f.comprobante || '—'}
                            {f.comprobante && (
