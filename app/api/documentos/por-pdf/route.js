@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '../../../../lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 // Abre el PDF de una factura a partir del número de susceptible.
 // Un susceptible puede amparar varias facturas, así que el archivo suele
@@ -41,10 +43,13 @@ export async function GET(request) {
 
     const { data, error } = await supabase.storage
       .from('documentos')
-      .createSignedUrl(doc.storage_path, 300);
+      // Una hora: el enlace se guardaba en caché y expiraba antes de abrirlo
+      .createSignedUrl(doc.storage_path, 3600);
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, url: data.signedUrl, nombre: doc.nombre_original });
+    return new NextResponse(JSON.stringify({ ok: true, url: data.signedUrl, nombre: doc.nombre_original }), {
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store, max-age=0' },
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e && e.message ? e.message : 'Error de servidor.' },
