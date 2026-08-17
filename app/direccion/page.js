@@ -159,28 +159,28 @@ export default function Direccion() {
           </div>
 
           {serieE.length > 0 && (() => {
-            const max = Math.max(...serieE.map((x) => Number(x.importe || 0))) * 1.12;
+            const max = Math.max(...serieE.map((x) => Number(x.crs || 0))) * 1.12;
             const AL = 150, ANCHO = Math.max(560, serieE.length * 30);
             const paso = (ANCHO - 52) / serieE.length;
             const bw = Math.min(24, paso - 5);
             return (
               <div style={card}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Importe emitido por día</div>
-                <div style={{ fontSize: 12, color: GRIS, marginBottom: 10 }}>Lo que el IMSS liberó en contra recibos, día por día</div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: NAVY }}>Contra recibos emitidos por día</div>
+                <div style={{ fontSize: 12, color: GRIS, marginBottom: 10 }}>Cuántos liberó el IMSS, día por día</div>
                 <div style={{ overflowX: 'auto' }}>
                   <svg width={ANCHO} height={AL + 56}>
                     {[0, 0.5, 1].map((f, i) => (
                       <g key={i}>
                         <line x1="52" y1={12 + AL - AL * f} x2={ANCHO} y2={12 + AL - AL * f} stroke="#EEEEEE" />
-                        <text x="0" y={12 + AL - AL * f + 4} fontSize="10" fill="#8B8D93">{'$' + (max * f / 1000000).toFixed(1) + 'M'}</text>
+                        <text x="0" y={12 + AL - AL * f + 4} fontSize="10" fill="#8B8D93">{Math.round(max * f)}</text>
                       </g>
                     ))}
                     {serieE.map((x, i) => {
-                      const h = max ? (Number(x.importe) / max) * AL : 0;
+                      const h = max ? (Number(x.crs) / max) * AL : 0;
                       return (
                         <g key={x.fecha}>
                           <rect x={52 + i * paso + (paso - bw) / 2} y={12 + AL - h} width={bw} height={Math.max(h, 1)} fill={VERDE} rx="2">
-                            <title>{fmtD(x.fecha) + ' — ' + mny(x.importe) + ' · ' + x.crs + ' CR'}</title>
+                            <title>{fmtD(x.fecha) + ' — ' + x.crs + ' contra recibos · ' + mny(x.importe)}</title>
                           </rect>
                           {(serieE.length <= 24 || i % 2 === 0) && (
                             <text x={52 + i * paso + paso / 2} y={12 + AL + 16} fontSize="9.5" fill="#8B8D93" textAnchor="middle">{fmtD(x.fecha)}</text>
