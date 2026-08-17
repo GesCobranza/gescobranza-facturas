@@ -23,7 +23,33 @@ export async function GET(request) {
       .limit(1000);
 
     if (error) throw error;
-    return NextResponse.json({ ok: true, facturas: data || [] });
+
+    // Paquetes que ya salieron pero siguen sin número de guía
+    const { data: pendientes } = await supabase
+      .from('envios')
+      .select('id, delegacion, fecha_envio, enviado_por, notas')
+      .is('guia', null)
+      .order('fecha_envio', { ascending: false })
+      .limit(50);
+
+    let conConteo = [];
+    if (pendientes && pendientes.length > 0) {
+      const ids = pendientes.map((e) => e.id);
+      const { data: fs } = await supabase
+        .from('facturas')
+        .select('envio_id, importe')
+        .in('envio_id', ids);
+      conConteo = pendientes.map((e) => {
+        const mias = (fs || []).filter((f) => f.envio_id === e.id);
+        return {
+          ...e,
+          facturas: mias.length,
+          importe: mias.reduce((s, f) => s + Number(f.importe || 0), 0),
+        };
+      });
+    }
+
+    return NextResponse.json({ ok: true, facturas: data || [], sinGuia: conConteo });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e && e.message ? e.message : 'Error de servidor.' },
@@ -46,10 +72,8 @@ export async function POST(request) {
     if (!delegacion || !fechaEnvio) {
       return NextResponse.json({ ok: false, error: 'Falta la delegación o la fecha de envío.' }, { status: 400 });
     }
-    // La guía es la prueba de entrega: sin ella el envío no sirve para reclamar.
-    if (!guia) {
-      return NextResponse.json({ ok: false, error: 'Falta el número de guía.' }, { status: 400 });
-    }
+    // La guía puede llegar después: el paquete se registra cuando sale físicamente
+    // y el número se asigna al regresar de la paquetería.
     if (!enviadoPor) {
       return NextResponse.json({ ok: false, error: 'Falta indicar quién envía el paquete.' }, { status: 400 });
     }
@@ -59,10 +83,23 @@ export async function POST(request) {
 
     const supabase = getSupabaseAdmin();
 
+    // Asigna el número de guía a un paquete que ya salió
+    if (body.accion === 'asignar_guia') {
+      if (!body.envioId || !String(body.guia || '').trim()) {
+        return NextResponse.json({ ok: false, error: 'Falta el paquete o el número de guía.' }, { status: 400 });
+      }
+      const { error: errG } = await supabase
+        .from('envios')
+        .update({ guia: String(body.guia).trim() })
+        .eq('id', body.envioId);
+      if (errG) throw errG;
+      return NextResponse.json({ ok: true });
+    }
+
     const { data: envio, error: errEnvio } = await supabase
       .from('envios')
       .insert({
-        guia: guia,
+        guia: guia || null,
         paqueteria: 'Paquetexpress',
         delegacion: delegacion,
         fecha_envio: fechaEnvio,
