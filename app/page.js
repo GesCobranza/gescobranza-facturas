@@ -613,6 +613,7 @@ export default function Home() {
       body: JSON.stringify({
         delegacion: gFiltroDeleg,
         guia: '',
+        permitirSinGuia: true,
         fechaEnvio: fecha,
         enviadoPor: capturista,
         ids: Array.from(seleccionados),
