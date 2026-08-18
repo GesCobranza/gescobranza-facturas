@@ -72,8 +72,12 @@ export async function POST(request) {
     if (!delegacion || !fechaEnvio) {
       return NextResponse.json({ ok: false, error: 'Falta la delegación o la fecha de envío.' }, { status: 400 });
     }
-    // La guía puede llegar después: el paquete se registra cuando sale físicamente
-    // y el número se asigna al regresar de la paquetería.
+    // Desde «Seguimiento Envío» el paquete se crea sin guía (aún no la dan en la
+    // paquetería) y se marca con permitirSinGuia. Cuando se registra a mano desde
+    // «Registrar envío» el número ya se tiene, así que aquí sí se exige.
+    if (!guia && body.permitirSinGuia !== true) {
+      return NextResponse.json({ ok: false, error: 'Falta el número de guía.' }, { status: 400 });
+    }
     if (!enviadoPor) {
       return NextResponse.json({ ok: false, error: 'Falta indicar quién envía el paquete.' }, { status: 400 });
     }
