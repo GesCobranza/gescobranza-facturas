@@ -111,54 +111,36 @@ export async function POST(request) {
       }, { status: 400 });
     }
 
-    // Un contra recibo por página
+    // Un contra recibo por página, replicando el formato del IMSS:
+    // un cuarto de hoja carta, pegado a la esquina superior izquierda.
     const pdf = await PDFDocument.create();
     const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const NEGRO = rgb(0.1, 0.1, 0.1);
-    const GRIS = rgb(0.45, 0.45, 0.45);
+    const NEGRO = rgb(0.102, 0.102, 0.102);
+
+    const W = 306, H = 396, Y0 = 792;
 
     for (const c of validos) {
-      const info = claves[c.comprobante + '|' + c.prov_no_norm] || {};
       const pg = pdf.addPage([612, 792]);
-      const { height } = pg.getSize();
-      let y = height - 60;
+      const px = (v) => (v / 100) * W;
+      const py = (v) => Y0 - (v / 100) * H;
+      const T = (t, x, y) => pg.drawText(String(t == null ? '' : t), {
+        x: px(x), y: py(y), size: 7.5, font: font, color: NEGRO,
+      });
 
-      pg.drawText('INSTITUTO MEXICANO DEL SEGURO SOCIAL', { x: 50, y: y, size: 11, font: bold, color: NEGRO });
-      y -= 16;
-      pg.drawText('CONTRA RECIBO', { x: 50, y: y, size: 15, font: bold, color: NEGRO });
-      y -= 26;
-      pg.drawLine({ start: { x: 50, y: y }, end: { x: 562, y: y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
-      y -= 26;
+      const em = partes(c.fecha_emision);
+      const pp = partes(c.fecha_prog_pago);
+      const sello = partes(c.fecha_emision).join('/');
 
-      const campo = (etq, val) => {
-        pg.drawText(etq, { x: 50, y: y, size: 9, font: font, color: GRIS });
-        pg.drawText(String(val == null ? '' : val), { x: 190, y: y, size: 11, font: bold, color: NEGRO });
-        y -= 20;
-      };
-
-      campo('No. de contra recibo', c.comprobante);
-      campo('Unidad', (c.un || '') + (c.origen ? '  ·  origen ' + c.origen : ''));
-      campo('Proveedor', '(' + (c.prov_no || '') + ')  ' + (c.prov_nombre || ''));
-      campo('Importe', money(c.importe_mxn));
-      campo('Factura', c.factura_texto || '—');
-      campo('Fecha de emision', partes(c.fecha_emision).join('/'));
-      campo('Pago programado', partes(c.fecha_prog_pago).join('/'));
-
-      if (c.fuente === '4004' && c.fecha_pago) {
-        campo('Fecha de pago', partes(c.fecha_pago).join('/'));
-        campo('Referencia', (c.referencia_pago || 's/r') + (c.banco ? '  ·  ' + c.banco : ''));
-      }
-      campo('Facturas amparadas', info.facturas || 0);
-      campo('Usuario', c.usuario || '—');
-
-      y -= 10;
-      pg.drawLine({ start: { x: 50, y: y }, end: { x: 562, y: y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
-      y -= 18;
-      pg.drawText(info.empresa || '', { x: 50, y: y, size: 10, font: font, color: GRIS });
-
-      pg.drawText('Documento generado por Gestion Especializada en Cobranza  ·  gescobranza.com',
-        { x: 50, y: 40, size: 7.5, font: font, color: rgb(0.6, 0.6, 0.6) });
+      T(sello, 65, 10);
+      T(c.un, 1, 17);
+      T(c.origen, 27, 17);
+      T(c.comprobante, 8, 25);
+      T('(' + (c.prov_no || '') + ') ' + (c.prov_nombre || ''), 8, 44);
+      T(money(c.importe_mxn), 15, 51);
+      T(c.factura_texto || '', 20, 58);
+      T(em[0], 58, 63); T(em[1], 68, 63); T(em[2], 78, 63);
+      T(pp[0], 58, 71); T(pp[1], 68, 71); T(pp[2], 78, 71);
+      T(c.usuario || '', 37, 90);
     }
 
     const bytes = await pdf.save();
