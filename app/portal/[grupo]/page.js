@@ -698,7 +698,7 @@ export default function PortalGrupo() {
                 <label>Laboratorio</label>
                 <select value={dlProv} onChange={(e) => setDlProv(e.target.value)}>
                   <option value="">Todos los laboratorios</option>
-                  {(catalogos.empresas || []).map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
+                  {empresas.map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
                 </select>
               </div>
               <div className="field">
