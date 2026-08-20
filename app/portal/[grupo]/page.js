@@ -41,6 +41,12 @@ export default function PortalGrupo() {
   const [calFiltroProvNo, setCalFiltroProvNo] = useState('');
   const [calFiltroDeleg, setCalFiltroDeleg] = useState('');
   const [calDiasAtras, setCalDiasAtras] = useState(30);
+  const [dlProv, setDlProv] = useState('');
+  const [dlDesde, setDlDesde] = useState('');
+  const [dlHasta, setDlHasta] = useState('');
+  const [dlResumen, setDlResumen] = useState(null);
+  const [dlCargando, setDlCargando] = useState(false);
+  const [dlBajando, setDlBajando] = useState(false);
   const CONSULTA_POR_PAGINA = 50;
 
   // ---- Panel KPI ----
@@ -64,7 +70,8 @@ export default function PortalGrupo() {
 
   useEffect(() => {
     if (autenticado && tab === 'flujo') cargarCalendario();
-  }, [autenticado, tab, calFiltroProvNo, calFiltroDeleg, calDiasAtras]);
+    if (autenticado && tab === 'descargacr') contarCr();
+  }, [autenticado, tab, calFiltroProvNo, calFiltroDeleg, calDiasAtras, dlProv, dlDesde, dlHasta]);
 
   async function ingresar(e) {
     e.preventDefault();
@@ -281,6 +288,51 @@ export default function PortalGrupo() {
     return grupos;
   }
 
+  // Cuenta cuántos contra recibos entran en el filtro, antes de generar el PDF
+  async function contarCr() {
+    setDlCargando(true);
+    setDlResumen(null);
+    try {
+      const res = await fetch('/api/portal/cr-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupo, clave, provNo: dlProv || null, desde: dlDesde || null, hasta: dlHasta || null, soloContar: true }),
+      });
+      const d = await res.json();
+      setDlResumen(d.ok ? d : { error: d.error || 'No se pudo consultar.' });
+    } catch (e) {
+      setDlResumen({ error: 'Error de conexión.' });
+    }
+    setDlCargando(false);
+  }
+
+  async function bajarPdfCr() {
+    setDlBajando(true);
+    try {
+      const res = await fetch('/api/portal/cr-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grupo, clave, provNo: dlProv || null, desde: dlDesde || null, hasta: dlHasta || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        alert(d.error || 'No se pudo generar el PDF.');
+        setDlBajando(false);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'contra-recibos-' + grupo + '.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert('No se pudo descargar el archivo.');
+    }
+    setDlBajando(false);
+  }
+
   async function cargarCalendario() {
     setCalCargando(true);
     try {
@@ -371,6 +423,7 @@ export default function PortalGrupo() {
         <button className={tab === 'consulta' ? 'active' : ''} onClick={() => setTab('consulta')}>Consulta</button>
         <button className={tab === 'panel' ? 'active' : ''} onClick={() => setTab('panel')}>Panel KPI</button>
         <button className={tab === 'flujo' ? 'active' : ''} onClick={() => setTab('flujo')}>Flujo de Cobranza</button>
+        <button className={tab === 'descargacr' ? 'active' : ''} onClick={() => setTab('descargacr')}>Descarga de CR</button>
       </nav>
 
       {tab === 'consulta' && (
@@ -630,6 +683,91 @@ export default function PortalGrupo() {
               </div>
 
             </>
+          )}
+        </>
+      )}
+
+      {tab === 'descargacr' && (
+        <>
+          <div className="card">
+            <h2>Descarga de contra recibos</h2>
+            <p className="muted" style={{ marginBottom: 16 }}>Genera un solo archivo PDF con un contra recibo por página, listo para imprimir.</p>
+
+            <div className="grid" style={{ marginBottom: 14 }}>
+              <div className="field">
+                <label>Laboratorio</label>
+                <select value={dlProv} onChange={(e) => setDlProv(e.target.value)}>
+                  <option value="">Todos los laboratorios</option>
+                  {(catalogos.empresas || []).map((e) => <option key={e.numero} value={e.numero}>{e.nombre}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>Emitidos desde</label>
+                <input type="date" value={dlDesde} onChange={(e) => setDlDesde(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Emitidos hasta</label>
+                <input type="date" value={dlHasta} onChange={(e) => setDlHasta(e.target.value)} />
+              </div>
+            </div>
+
+            {dlCargando && <p className="muted">Consultando…</p>}
+
+            {dlResumen && dlResumen.error && (
+              <p className="muted" style={{ color: 'var(--red)' }}>{dlResumen.error}</p>
+            )}
+
+            {dlResumen && !dlResumen.error && dlResumen.total === 0 && (
+              <div style={{ background: 'var(--amber-soft)', borderRadius: 8, padding: '14px 16px' }}>
+                <p className="muted" style={{ margin: 0, color: 'var(--amber)' }}>No hay contra recibos emitidos en ese rango. Prueba con otras fechas.</p>
+              </div>
+            )}
+
+            {dlResumen && !dlResumen.error && dlResumen.total > 0 && dlResumen.total <= (dlResumen.tope || 150) && (
+              <div style={{ background: 'var(--green-soft)', borderRadius: 8, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 21, fontWeight: 700, color: 'var(--green)' }}>{dlResumen.total} contra recibo(s)</div>
+                  <div className="muted" style={{ fontSize: 12.5, marginTop: 2 }}>{mny(dlResumen.importe)} · {dlResumen.facturas} facturas amparadas</div>
+                </div>
+                <button className="btn btn-primary" onClick={bajarPdfCr} disabled={dlBajando}>
+                  {dlBajando ? 'Generando…' : 'Descargar PDF'}
+                </button>
+              </div>
+            )}
+
+            {dlResumen && !dlResumen.error && dlResumen.total > (dlResumen.tope || 150) && (
+              <div style={{ background: 'var(--amber-soft)', border: '1px solid #EFDCB3', borderRadius: 8, padding: '14px 16px' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--amber)' }}>{dlResumen.total} contra recibos en el rango seleccionado</div>
+                <div className="muted" style={{ fontSize: 12.5, marginTop: 3, color: 'var(--amber)' }}>
+                  Es demasiado para un solo archivo. Reduce el rango de fechas o filtra por laboratorio para descargarlos por partes.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {dlResumen && !dlResumen.error && (dlResumen.lista || []).length > 0 && (
+            <div className="card">
+              <h2>Se incluirán estos contra recibos</h2>
+              <p className="muted" style={{ marginBottom: 10 }}>Muestra de los más recientes</p>
+              <table>
+                <thead><tr>
+                  <th>Contra recibo</th><th>Laboratorio</th><th>Emisión</th>
+                  <th style={{ textAlign: 'right' }}>Facturas</th>
+                  <th style={{ textAlign: 'right' }}>Importe</th>
+                </tr></thead>
+                <tbody>
+                  {(dlResumen.lista || []).map((c) => (
+                    <tr key={c.comprobante}>
+                      <td>{c.comprobante}</td>
+                      <td>{c.empresa}</td>
+                      <td className="muted">{fmtF(c.fecha_emision)}</td>
+                      <td style={{ textAlign: 'right' }} className="muted">{c.facturas}</td>
+                      <td style={{ textAlign: 'right' }}>{mny(c.importe)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
