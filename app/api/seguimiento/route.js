@@ -13,6 +13,34 @@ async function agregarConteoComentarios(supabase, filas) {
   return filas.map((f) => ({ ...f, comentarios_count: conteo[f.id] || 0 }));
 }
 
+// ---------------------------------------------------------------------------
+// Trae la guia y la fecha REAL de salida del paquete de cada factura.
+// La fecha que vive en facturas.fecha_envio no sirve para esto: en las filas
+// que vinieron de la importacion historica guarda la fecha de la carga, no la
+// de salida. La unica confiable es envios.fecha_envio, y solo existe cuando
+// hay envio_id.
+// ---------------------------------------------------------------------------
+async function agregarDatosEnvio(supabase, filas) {
+  const ids = [...new Set(filas.map((f) => f.envio_id).filter(Boolean))];
+  if (ids.length === 0) {
+    return filas.map((f) => ({ ...f, envio_guia: null, envio_fecha: null }));
+  }
+  const { data: envios } = await supabase
+    .from('envios')
+    .select('id, guia, fecha_envio')
+    .in('id', ids);
+  const porId = {};
+  (envios || []).forEach((e) => { porId[e.id] = e; });
+  return filas.map((f) => {
+    const e = f.envio_id ? porId[f.envio_id] : null;
+    return {
+      ...f,
+      envio_guia: e && e.guia ? e.guia : null,
+      envio_fecha: e && e.fecha_envio ? e.fecha_envio : null,
+    };
+  });
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const delegacion = searchParams.get('delegacion') || null;
@@ -39,24 +67,40 @@ export async function GET(request) {
     .eq('tiene_cr', false)
     .eq('enviada_gestor', true)
     .order('fecha_envio', { ascending: true })
+    .order('id', { ascending: true }) // desempate unico: sin esto el limite corta filas al azar
     .limit(500);
   if (delegacion) qEsperando = qEsperando.eq('delegacion', delegacion);
   const { data: esperandoRaw, error: errEsp } = await qEsperando;
   if (errEsp) return NextResponse.json({ ok: false, error: errEsp.message }, { status: 500 });
-  const esperando = await agregarConteoComentarios(supabase, esperandoRaw);
+  const esperandoConEnvio = await agregarDatosEnvio(supabase, esperandoRaw || []);
+  const esperando = await agregarConteoComentarios(supabase, esperandoConEnvio);
 
   let query = supabase.from('facturas').select('*', { count: 'exact' }).eq('tiene_cr', false);
   if (orden === 'importe_desc') query = query.order('importe', { ascending: false });
   else if (orden === 'importe_asc') query = query.order('importe', { ascending: true });
   else query = query.order('fecha_captura', { ascending: false });
+
+  // -------------------------------------------------------------------------
+  // DESEMPATE OBLIGATORIO. No quitar.
+  // fecha_captura e importe NO son unicos: las cargas masivas dejan miles de
+  // filas con el mismo valor. Postgres no garantiza orden entre empates, y
+  // cada pagina de .range() es una consulta nueva que puede devolverlas
+  // barajadas distinto: una factura sale repetida en una pagina y AUSENTE en
+  // todas. En esta tabla eso significa que nunca se marca como enviada.
+  // -------------------------------------------------------------------------
+  query = query.order('id', { ascending: true });
+
   if (delegacion) query = query.eq('delegacion', delegacion);
   if (envio === 'enviada') query = query.eq('enviada_gestor', true);
   if (envio === 'noenviada') query = query.eq('enviada_gestor', false);
+
   const desde = (pagina - 1) * porPagina;
   query = query.range(desde, desde + porPagina - 1);
+
   const { data: filasGestoresRaw, error: errFilas, count } = await query;
   if (errFilas) return NextResponse.json({ ok: false, error: errFilas.message }, { status: 500 });
-  const filasGestores = await agregarConteoComentarios(supabase, filasGestoresRaw);
+  const filasConEnvio = await agregarDatosEnvio(supabase, filasGestoresRaw || []);
+  const filasGestores = await agregarConteoComentarios(supabase, filasConEnvio);
 
   return NextResponse.json({
     ok: true,
