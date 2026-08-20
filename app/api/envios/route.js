@@ -20,15 +20,18 @@ export async function GET(request) {
       .eq('enviada_gestor', false)
       .is('envio_id', null)
       .order('alta')
+      .order('id', { ascending: true }) // desempate unico: alta se repite entre proveedores
       .limit(1000);
 
     if (error) throw error;
 
-    // Paquetes que ya salieron pero siguen sin número de guía
+    // Paquetes que ya salieron pero siguen sin número de guía.
+    // La guia puede quedar como NULL o como cadena vacia segun por donde se
+    // haya creado el paquete: hay que contemplar las dos.
     const { data: pendientes } = await supabase
       .from('envios')
-      .select('id, delegacion, fecha_envio, enviado_por, notas')
-      .is('guia', null)
+      .select('id, delegacion, fecha_envio, enviado_por, notas, guia')
+      .or('guia.is.null,guia.eq.')
       .order('fecha_envio', { ascending: false })
       .limit(50);
 
@@ -62,6 +65,38 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
+
+    const supabase = getSupabaseAdmin();
+
+    // -----------------------------------------------------------------------
+    // ASIGNAR GUIA A UN PAQUETE QUE YA SALIO.
+    //
+    // Va PRIMERO, antes de cualquier otra validacion. Este caso solo manda
+    // accion, envioId y guia -- el paquete ya existe, asi que no trae
+    // delegacion, fecha, enviadoPor ni ids. Cuando este bloque estaba despues
+    // de las validaciones de paquete nuevo, la primera de ellas cortaba con
+    // 400 "Falta la delegacion o la fecha de envio" y el boton Guardar no
+    // hacia nada. No mover de aqui.
+    // -----------------------------------------------------------------------
+    if (body.accion === 'asignar_guia') {
+      const envioId = String(body.envioId || '').trim();
+      const nuevaGuia = String(body.guia || '').trim();
+      if (!envioId || !nuevaGuia) {
+        return NextResponse.json({ ok: false, error: 'Falta el paquete o el número de guía.' }, { status: 400 });
+      }
+      const { data: act, error: errG } = await supabase
+        .from('envios')
+        .update({ guia: nuevaGuia })
+        .eq('id', envioId)
+        .select('id, guia');
+      if (errG) throw errG;
+      if (!act || act.length === 0) {
+        return NextResponse.json({ ok: false, error: 'No se encontró ese paquete.' }, { status: 404 });
+      }
+      return NextResponse.json({ ok: true, envioId: envioId, guia: nuevaGuia });
+    }
+
+    // ----------------------- Registrar un paquete nuevo ---------------------
     const delegacion = String(body.delegacion || '').trim();
     const guia = String(body.guia || '').trim();
     const fechaEnvio = String(body.fechaEnvio || '').trim();
@@ -83,21 +118,6 @@ export async function POST(request) {
     }
     if (ids.length === 0) {
       return NextResponse.json({ ok: false, error: 'No seleccionaste ninguna factura.' }, { status: 400 });
-    }
-
-    const supabase = getSupabaseAdmin();
-
-    // Asigna el número de guía a un paquete que ya salió
-    if (body.accion === 'asignar_guia') {
-      if (!body.envioId || !String(body.guia || '').trim()) {
-        return NextResponse.json({ ok: false, error: 'Falta el paquete o el número de guía.' }, { status: 400 });
-      }
-      const { error: errG } = await supabase
-        .from('envios')
-        .update({ guia: String(body.guia).trim() })
-        .eq('id', body.envioId);
-      if (errG) throw errG;
-      return NextResponse.json({ ok: true });
     }
 
     const { data: envio, error: errEnvio } = await supabase
