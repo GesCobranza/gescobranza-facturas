@@ -74,7 +74,7 @@ export async function POST(request) {
     let qc = supabase
       .from('cr_institucional')
       .select('*')
-      .in('comprobante', comprobantes.slice(0, 1000));
+      .in('comprobante', comprobantes.slice(0, 5000));
     if (desde) qc = qc.gte('fecha_emision', desde);
     if (hasta) qc = qc.lte('fecha_emision', hasta);
     const { data: crs, error: errC } = await qc;
