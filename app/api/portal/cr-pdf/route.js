@@ -41,24 +41,46 @@ export async function POST(request) {
       return Response.json({ ok: false, error: 'Acceso no válido.' }, { status: 401 });
     }
 
-    // Comprobantes ligados a facturas de este grupo
-    // Supabase corta en 1000 filas por defecto: se trae por tandas para no
-    // perder comprobantes en carteras grandes.
+    // -----------------------------------------------------------------------
+    // Comprobantes ligados a facturas de este grupo.
+    // Supabase corta en 1000 filas por defecto: se trae por tandas.
+    //
+    // ORDEN OBLIGATORIO. No quitar el .order('id').
+    // Sin ORDER BY, Postgres devuelve las filas en el orden que se le da la
+    // gana, y ese orden puede cambiar entre una tanda y la siguiente. Como
+    // cada .range() es una consulta independiente, filas enteras se repiten
+    // en una tanda y desaparecen de todas: contra recibos que nunca llegan
+    // al PDF. id es uuid y unico, asi que fija el orden de forma estable.
+    // -----------------------------------------------------------------------
     const facsTodos = [];
     const TANDA = 1000;
-    for (let desdeFila = 0; desdeFila < 20000; desdeFila += TANDA) {
+    const MAX_TANDAS = 200; // 200,000 facturas: tope de seguridad
+    let truncadoFacturas = false;
+
+    for (let i = 0; i < MAX_TANDAS; i += 1) {
+      const desdeFila = i * TANDA;
       const { data: tanda, error: errF } = await supabase
         .from('facturas')
-        .select('comprobante, prov_no, empresa')
+        .select('id, comprobante, prov_no, empresa')
         .eq('grupo', grupo)
         .eq('tiene_cr', true)
         .not('comprobante', 'is', null)
+        .order('id', { ascending: true })
         .range(desdeFila, desdeFila + TANDA - 1);
       if (errF) throw errF;
       if (!tanda || tanda.length === 0) break;
       facsTodos.push(...tanda);
       if (tanda.length < TANDA) break;
+      if (i === MAX_TANDAS - 1) truncadoFacturas = true;
     }
+
+    if (truncadoFacturas) {
+      return Response.json({
+        ok: false,
+        error: 'La cartera supero el limite interno de lectura. Avisa a soporte antes de descargar.',
+      }, { status: 500 });
+    }
+
     // El proveedor viene del catálogo con ceros (0000153480) pero en facturas
     // se guarda sin ellos (153480): se compara normalizado.
     const provNorm = provNo.replace(/^0+/, '');
@@ -78,21 +100,42 @@ export async function POST(request) {
       return Response.json({ ok: true, total: 0, importe: 0, facturas: 0, lista: [] });
     }
 
-    // Detalle institucional, filtrado por fecha de emisión
+    // -----------------------------------------------------------------------
+    // Detalle institucional, filtrado por fecha de emisión.
+    // cr_institucional no tiene columna id, asi que aqui el orden estable se
+    // consigue con comprobante + prov_no_norm. El .range(0, 4999) es un tope
+    // duro por lote: si alguna vez se alcanza, el resultado esta truncado y
+    // hay que avisar en vez de entregar un PDF al que le faltan hojas.
+    // -----------------------------------------------------------------------
     const crs = [];
     const BLOQUE = 300;
+    const TOPE_LOTE = 5000;
+    let truncadoCr = false;
+
     for (let i = 0; i < comprobantes.length; i += BLOQUE) {
       const lote = comprobantes.slice(i, i + BLOQUE);
       let qc = supabase
         .from('cr_institucional')
         .select('*')
         .in('comprobante', lote)
-        .range(0, 4999);
+        .order('comprobante', { ascending: true })
+        .order('prov_no_norm', { ascending: true })
+        .range(0, TOPE_LOTE - 1);
       if (desde) qc = qc.gte('fecha_emision', desde);
       if (hasta) qc = qc.lte('fecha_emision', hasta);
       const { data: parte, error: errC } = await qc;
       if (errC) throw errC;
-      if (parte && parte.length) crs.push(...parte);
+      if (parte && parte.length) {
+        crs.push(...parte);
+        if (parte.length >= TOPE_LOTE) truncadoCr = true;
+      }
+    }
+
+    if (truncadoCr) {
+      return Response.json({
+        ok: false,
+        error: 'El detalle institucional supero el limite interno de lectura. Avisa a soporte antes de descargar.',
+      }, { status: 500 });
     }
 
     const validos = (crs || []).filter((c) => claves[c.comprobante + '|' + c.prov_no_norm]);
