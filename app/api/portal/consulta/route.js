@@ -71,6 +71,17 @@ export async function POST(request) {
     else if (orden === 'importe_asc') q = q.order('importe', { ascending: true });
     else q = q.order('fecha_captura', { ascending: false });
 
+    // ---------------------------------------------------------------------
+    // DESEMPATE OBLIGATORIO. No quitar.
+    // fecha_captura e importe NO son unicos: las cargas masivas dejan miles
+    // de filas con el MISMO timestamp al microsegundo. Postgres no garantiza
+    // ningun orden entre filas empatadas, y cada pagina de .range() es una
+    // consulta independiente que puede devolverlas barajadas distinto.
+    // Resultado: filas repetidas en una pagina y AUSENTES en todas.
+    // Ordenar tambien por id (uuid, unico) vuelve el orden determinista.
+    // ---------------------------------------------------------------------
+    q = q.order('id', { ascending: true });
+
     if (delegacion) q = q.eq('delegacion', delegacion);
     if (provNo) q = q.eq('prov_no_norm', normalizarProvNo(provNo));
 
@@ -102,17 +113,50 @@ export async function POST(request) {
 
   if (exportar) {
     const PAGINA = 1000;
+    const MAX_PAGINAS = 200; // tope de seguridad: evita un ciclo infinito
     let desde = 0;
     let todas = [];
-    while (true) {
-      const { data, error } = await construirQuery().range(desde, desde + PAGINA - 1);
+    let totalEsperado = null;
+
+    for (let p = 0; p < MAX_PAGINAS; p += 1) {
+      const { data, error, count } = await construirQuery().range(desde, desde + PAGINA - 1);
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-      todas = todas.concat(data);
-      if (data.length < PAGINA) break;
+      if (totalEsperado === null && typeof count === 'number') totalEsperado = count;
+      const lote = data || [];
+      todas = todas.concat(lote);
+      if (lote.length < PAGINA) break;
       desde += PAGINA;
     }
-    const salida = darForma(todas);
-    return NextResponse.json({ ok: true, facturas: salida, total: salida.length });
+
+    // Red de seguridad 1: elimina cualquier fila repetida por id
+    const vistos = new Set();
+    const unicas = [];
+    for (const f of todas) {
+      if (f && f.id && !vistos.has(f.id)) {
+        vistos.add(f.id);
+        unicas.push(f);
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Red de seguridad 2: si lo traido no cuadra con lo que la base dice que
+    // hay, NO se entrega un archivo incompleto en silencio. Se avisa y se
+    // corta. Un Excel corto sin aviso es peor que un error visible: el
+    // cliente lo lee como facturas no gestionadas y levanta un reclamo.
+    // ---------------------------------------------------------------------
+    if (typeof totalEsperado === 'number' && unicas.length !== totalEsperado) {
+      return NextResponse.json({
+        ok: false,
+        error:
+          'La exportacion salio incompleta (' + unicas.length + ' de ' + totalEsperado +
+          ' registros) y no se genero el archivo. Vuelve a intentarlo; si sigue fallando, avisa a soporte.',
+        esperado: totalEsperado,
+        obtenido: unicas.length,
+      }, { status: 500 });
+    }
+
+    const salida = darForma(unicas);
+    return NextResponse.json({ ok: true, facturas: salida, total: salida.length, esperado: totalEsperado });
   }
 
   const pagina = Math.max(1, parseInt(body.pagina || 1, 10));
