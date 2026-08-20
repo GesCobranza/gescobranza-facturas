@@ -1790,10 +1790,19 @@ async function cruzarCon5005() {
                         <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
-                        <td>{f.enviada_gestor
+                                               <td>{f.enviada_gestor
                           ? <>
                               <span className="tag tag-enviada">Enviada</span>{' '}
                               <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
+                              {f.envio_fecha && f.envio_guia && (
+                                <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>{fmtFecha(f.envio_fecha)} · guía {f.envio_guia}</div>
+                              )}
+                              {f.envio_fecha && !f.envio_guia && (
+                                <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>{fmtFecha(f.envio_fecha)} · pendiente de guía</div>
+                              )}
+                              {!f.envio_fecha && (
+                                <div style={{ fontSize: 11, marginTop: 2, color: 'var(--amber)' }}>sin registro</div>
+                              )}
                             </>
                           : <span className="muted">Sin enviar</span>}
                         </td>
