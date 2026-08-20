@@ -49,9 +49,14 @@ export async function POST(request) {
       .eq('tiene_cr', true)
       .not('comprobante', 'is', null)
       .limit(5000);
-    if (provNo) qf = qf.eq('prov_no', provNo);
-    const { data: facs, error: errF } = await qf;
+    const { data: facsTodos, error: errF } = await qf;
     if (errF) throw errF;
+    // El proveedor viene del catálogo con ceros (0000153480) pero en facturas
+    // se guarda sin ellos (153480): se compara normalizado.
+    const provNorm = provNo.replace(/^0+/, '');
+    const facs = provNorm
+      ? (facsTodos || []).filter((f) => String(f.prov_no || '').replace(/^0+/, '') === provNorm)
+      : (facsTodos || []);
 
     const claves = {};
     (facs || []).forEach((f) => {
