@@ -1697,7 +1697,17 @@ async function cruzarCon5005() {
                   onClick={() => filtrarPorDelegacion(v.delegacion, 'noenviada')}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', marginTop: 6 }}>{mmm(v.importe)}</div>
-                  <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
+                                    <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
+                  {Number(v.viejas) > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--red)', background: 'var(--red-soft)', borderRadius: 5, padding: '3px 6px', marginTop: 5, lineHeight: 1.3 }}>
+                      ⚠ {v.viejas} con más de 15 días{v.dias_max ? ' · hasta ' + v.dias_max + 'd' : ''}
+                    </div>
+                  )}
+                  {Number(v.historicas) > 0 && (
+                    <div style={{ fontSize: 11, color: 'var(--amber)', background: 'var(--amber-soft)', borderRadius: 5, padding: '3px 6px', marginTop: 4, lineHeight: 1.3 }}>
+                      ⚠ OJO — {v.historicas} de importación histórica
+                    </div>
+                  )}
                   <a href={'/envios?delegacion=' + encodeURIComponent(v.delegacion)} onClick={(e) => e.stopPropagation()} style={{ fontSize: 11.5, display: 'inline-block', marginTop: 6 }}>Registrar envío →</a>
                 </div>
               ))}
