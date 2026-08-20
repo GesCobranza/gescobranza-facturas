@@ -33,7 +33,7 @@ export async function POST(request) {
 
     // El candado del portal: la clave debe corresponder al grupo
     const { data: g } = await supabase
-      .from('catalogo_grupos_portal')
+      .from('claves_portal')
       .select('grupo, clave')
       .eq('grupo', grupo)
       .maybeSingle();
@@ -79,22 +79,25 @@ export async function POST(request) {
     validos.sort((a, b) => String(b.fecha_emision || '').localeCompare(String(a.fecha_emision || '')));
 
     const importe = validos.reduce((s, c) => s + Number(c.importe_mxn || 0), 0);
-    const nFacturas = validos.reduce((s, c) => s + (claves[c.comprobante + '|' + c.prov_no_norm]?.facturas || 0), 0);
+    const nFacturas = validos.reduce((s, c) => s + ((claves[c.comprobante + '|' + c.prov_no_norm] || {}).facturas || 0), 0);
 
     if (soloContar) {
       return Response.json({
         ok: true,
         total: validos.length,
-        importe,
+        importe: importe,
         facturas: nFacturas,
         tope: TOPE,
-        lista: validos.slice(0, 40).map((c) => ({
-          comprobante: c.comprobante,
-          empresa: claves[c.comprobante + '|' + c.prov_no_norm]?.empresa || c.prov_nombre,
-          fecha_emision: c.fecha_emision,
-          facturas: claves[c.comprobante + '|' + c.prov_no_norm]?.facturas || 0,
-          importe: Number(c.importe_mxn || 0),
-        })),
+        lista: validos.slice(0, 40).map((c) => {
+          const info = claves[c.comprobante + '|' + c.prov_no_norm] || {};
+          return {
+            comprobante: c.comprobante,
+            empresa: info.empresa || c.prov_nombre,
+            fecha_emision: c.fecha_emision,
+            facturas: info.facturas || 0,
+            importe: Number(c.importe_mxn || 0),
+          };
+        }),
       });
     }
 
@@ -121,17 +124,17 @@ export async function POST(request) {
       const { height } = pg.getSize();
       let y = height - 60;
 
-      pg.drawText('INSTITUTO MEXICANO DEL SEGURO SOCIAL', { x: 50, y, size: 11, font: bold, color: NEGRO });
+      pg.drawText('INSTITUTO MEXICANO DEL SEGURO SOCIAL', { x: 50, y: y, size: 11, font: bold, color: NEGRO });
       y -= 16;
-      pg.drawText('CONTRA RECIBO', { x: 50, y, size: 15, font: bold, color: NEGRO });
+      pg.drawText('CONTRA RECIBO', { x: 50, y: y, size: 15, font: bold, color: NEGRO });
       y -= 26;
-      pg.drawLine({ start: { x: 50, y }, end: { x: 562, y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
+      pg.drawLine({ start: { x: 50, y: y }, end: { x: 562, y: y }, thickness: 1, color: rgb(0.8, 0.8, 0.8) });
       y -= 26;
 
-      const campo = (etq, val, salto = 20) => {
-        pg.drawText(etq, { x: 50, y, size: 9, font: font, color: GRIS });
-        pg.drawText(String(val || ''), { x: 190, y, size: 11, font: bold, color: NEGRO });
-        y -= salto;
+      const campo = (etq, val) => {
+        pg.drawText(etq, { x: 50, y: y, size: 9, font: font, color: GRIS });
+        pg.drawText(String(val == null ? '' : val), { x: 190, y: y, size: 11, font: bold, color: NEGRO });
+        y -= 20;
       };
 
       campo('No. de contra recibo', c.comprobante);
@@ -139,7 +142,7 @@ export async function POST(request) {
       campo('Proveedor', '(' + (c.prov_no || '') + ')  ' + (c.prov_nombre || ''));
       campo('Importe', money(c.importe_mxn));
       campo('Factura', c.factura_texto || '—');
-      campo('Fecha de emisión', partes(c.fecha_emision).join('/'));
+      campo('Fecha de emision', partes(c.fecha_emision).join('/'));
       campo('Pago programado', partes(c.fecha_prog_pago).join('/'));
 
       if (c.fuente === '4004' && c.fecha_pago) {
@@ -150,11 +153,11 @@ export async function POST(request) {
       campo('Usuario', c.usuario || '—');
 
       y -= 10;
-      pg.drawLine({ start: { x: 50, y }, end: { x: 562, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
+      pg.drawLine({ start: { x: 50, y: y }, end: { x: 562, y: y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) });
       y -= 18;
-      pg.drawText(info.empresa || '', { x: 50, y, size: 10, font: font, color: GRIS });
+      pg.drawText(info.empresa || '', { x: 50, y: y, size: 10, font: font, color: GRIS });
 
-      pg.drawText('Documento generado por Gestión Especializada en Cobranza  ·  gescobranza.com',
+      pg.drawText('Documento generado por Gestion Especializada en Cobranza  ·  gescobranza.com',
         { x: 50, y: 40, size: 7.5, font: font, color: rgb(0.6, 0.6, 0.6) });
     }
 
