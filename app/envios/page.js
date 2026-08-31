@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 
 const NAVY = '#232B3E';
 const VERDE = '#227056';
+const AMBAR = '#B8791A';
+const ROJO = '#C23B3B';
 const GRIS = '#6E7178';
 
 function mny(n) {
@@ -22,6 +24,19 @@ function hoyISO() {
   return a.getFullYear() + '-' + dd(a.getMonth() + 1) + '-' + dd(a.getDate());
 }
 
+// El p90 medido de envio a contra recibo es de 14 dias. Ese es el umbral real,
+// no una meta inventada: pasado eso, el paquete ya se salio de lo normal.
+const META_DIAS = 14;
+
+const ESTATUS = [
+  { v: 'sin_verificar', txt: 'Sin verificar', color: GRIS,  fondo: '#F1F2F5' },
+  { v: 'en_transito',   txt: 'En tránsito',   color: AMBAR, fondo: '#FBF0DD' },
+  { v: 'entregada',     txt: 'Entregada',     color: VERDE, fondo: '#E7F5EE' },
+  { v: 'no_entregada',  txt: 'No entregada',  color: ROJO,  fondo: '#FBEAEA' },
+];
+
+const PERSONAS = ['Gabriel', 'Sophie', 'Mariano', 'Sari', 'Sarahi'];
+
 export default function RegistrarEnvio() {
   const [delegaciones, setDelegaciones] = useState([]);
   const [delegacion, setDelegacion] = useState('');
@@ -38,16 +53,22 @@ export default function RegistrarEnvio() {
   const [sinGuia, setSinGuia] = useState([]);
   const [guiaPend, setGuiaPend] = useState({});
 
+  // ---- Rastreo de paquetes con guia ----
+  const [rastreo, setRastreo] = useState([]);
+  const [quienVerifica, setQuienVerifica] = useState('');
+  const [filtroRastreo, setFiltroRastreo] = useState('pendientes');
+  const [guardandoEst, setGuardandoEst] = useState('');
+
   useEffect(() => {
     fetch('/api/catalogos')
       .then((r) => r.json())
       .then((d) => setDelegaciones(d.delegaciones || []))
       .catch(() => setDelegaciones([]));
-    // Si se llegó desde Seguimiento Envío, la delegación viene en la liga.
     const q = new URLSearchParams(window.location.search);
     const desdeLiga = q.get('delegacion');
     if (desdeLiga) setDelegacion(desdeLiga);
     cargarPendientes();
+    cargarRastreo();
   }, []);
 
   useEffect(() => {
@@ -87,7 +108,6 @@ export default function RegistrarEnvio() {
     setSeleccion(sel);
   }
 
-  // Paquetes que ya salieron y siguen esperando su número de guía
   async function cargarPendientes() {
     try {
       const r = await fetch('/api/envios?delegacion=' + encodeURIComponent('__pendientes__'));
@@ -95,6 +115,16 @@ export default function RegistrarEnvio() {
       setSinGuia(d.ok ? (d.sinGuia || []) : []);
     } catch (e) {
       setSinGuia([]);
+    }
+  }
+
+  async function cargarRastreo() {
+    try {
+      const r = await fetch('/api/envios?rastreo=1');
+      const d = await r.json();
+      setRastreo(d.ok ? (d.rastreo || []) : []);
+    } catch (e) {
+      setRastreo([]);
     }
   }
 
@@ -111,11 +141,36 @@ export default function RegistrarEnvio() {
     setGuiaPend({ ...guiaPend, [envioId]: '' });
     setMensaje({ tipo: 'ok', txt: '✓ Guía registrada.' });
     cargarPendientes();
+    cargarRastreo();
+  }
+
+  async function marcarEstatus(envioId, estatus) {
+    if (!quienVerifica && estatus !== 'sin_verificar') {
+      setMensaje({ tipo: 'err', txt: 'Elige primero quién está verificando, arriba de la lista.' });
+      return;
+    }
+    setGuardandoEst(envioId);
+    try {
+      const res = await fetch('/api/envios', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accion: 'estatus_entrega', envioId: envioId,
+          estatus: estatus, verificadoPor: quienVerifica,
+        }),
+      });
+      const d = await res.json();
+      if (!d.ok) setMensaje({ tipo: 'err', txt: d.error || 'No se pudo guardar el estatus.' });
+      else await cargarRastreo();
+    } catch (e) {
+      setMensaje({ tipo: 'err', txt: 'Error de conexión: ' + (e.message || e) });
+    }
+    setGuardandoEst('');
   }
 
   function diasDesde(iso) {
     if (!iso) return 0;
-    return Math.round((new Date() - new Date(iso + 'T12:00:00')) / 86400000);
+    return Math.round((new Date() - new Date(String(iso).slice(0, 10) + 'T12:00:00')) / 86400000);
   }
 
   async function registrar() {
@@ -140,6 +195,7 @@ export default function RegistrarEnvio() {
           : '';
         setMensaje({ tipo: 'ok', txt: '✓ Envío registrado: ' + d.marcadas + ' facturas' + (guia ? ' · guía ' + guia : '') + '.' + aviso });
         cargarPendientes();
+        cargarRastreo();
         setGuia('');
         setNotas('');
         const r2 = await fetch('/api/envios?delegacion=' + encodeURIComponent(delegacion));
@@ -158,6 +214,12 @@ export default function RegistrarEnvio() {
 
   const campo = { fontSize: 14, width: '100%' };
   const etiqueta = { display: 'block', fontSize: 12.5, color: GRIS, marginBottom: 4 };
+
+  const rastreoVisible = filtroRastreo === 'todos'
+    ? rastreo
+    : rastreo.filter((e) => e.estatus_entrega === 'sin_verificar' || e.estatus_entrega === 'en_transito');
+  const fueraMeta = rastreo.filter((e) => diasDesde(e.fecha_envio) > META_DIAS).length;
+  const importeRastreo = rastreoVisible.reduce((s, e) => s + Number(e.importe || 0), 0);
 
   return (
     <div style={{ maxWidth: 1000, margin: '0 auto', padding: '28px 20px 80px', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -186,7 +248,7 @@ export default function RegistrarEnvio() {
                     <div style={{ fontSize: 12, color: GRIS, marginTop: 2 }}>
                       {e.facturas} factura(s) · {Number(e.importe || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' })}
                       {' · salió el '}{String(e.fecha_envio).slice(8, 10)}/{String(e.fecha_envio).slice(5, 7)}
-                      {d > 1 && <b style={{ color: d > 3 ? '#C23B3B' : '#9A5B00' }}>{' · hace ' + d + ' días'}</b>}
+                      {d > 1 && <b style={{ color: d > 3 ? ROJO : '#9A5B00' }}>{' · hace ' + d + ' días'}</b>}
                     </div>
                     {e.enviado_por && <div style={{ fontSize: 11.5, color: GRIS }}>enviado por {e.enviado_por}</div>}
                   </div>
@@ -231,11 +293,7 @@ export default function RegistrarEnvio() {
             <label style={etiqueta}>Enviado por</label>
             <select value={enviadoPor} onChange={(e) => setEnviadoPor(e.target.value)} style={{ ...campo, borderColor: enviadoPor ? undefined : '#E0A6A6' }}>
               <option value="">— quién lo envía —</option>
-              <option value="Gabriel">Gabriel</option>
-              <option value="Sophie">Sophie</option>
-              <option value="Mariano">Mariano</option>
-              <option value="Sari">Sari</option>
-              <option value="Sarahi">Sarahi</option>
+              {PERSONAS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
         </div>
@@ -250,11 +308,11 @@ export default function RegistrarEnvio() {
         <div style={{
           padding: '11px 14px', borderRadius: 8, marginBottom: 16, fontSize: 13.5,
           background: mensaje.tipo === 'ok' ? '#E7F5EE' : '#FBEAEA',
-          color: mensaje.tipo === 'ok' ? VERDE : '#C23B3B',
+          color: mensaje.tipo === 'ok' ? VERDE : ROJO,
         }}>{mensaje.txt}</div>
       )}
 
-      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, background: '#fff', overflow: 'hidden', marginBottom: 18 }}>
         <div style={{ padding: '14px 18px', borderBottom: '1px solid #E3E6EC' }}>
           <h2 style={{ fontSize: 15, color: NAVY, margin: 0 }}>Facturas por enviar a esta delegación</h2>
           <p style={{ fontSize: 12.5, color: GRIS, margin: '3px 0 0' }}>Capturadas, sin contra recibo y sin envío registrado</p>
@@ -309,7 +367,7 @@ export default function RegistrarEnvio() {
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {!listo && (
-                  <span style={{ fontSize: 12.5, color: '#B8791A' }}>Falta capturar: {faltantes.join(', ')}</span>
+                  <span style={{ fontSize: 12.5, color: AMBAR }}>Falta capturar: {faltantes.join(', ')}</span>
                 )}
                 <button onClick={registrar} disabled={guardando || !listo}
                   style={{
@@ -324,6 +382,109 @@ export default function RegistrarEnvio() {
             </div>
           </>
         )}
+      </div>
+
+      {/* ================================================================
+          RASTREO: paquetes con guia que siguen sin contra recibo.
+          Se pica el numero de guia, abre Paquetexpress en pestaña nueva,
+          y se marca aqui lo que diga la pagina.
+         ================================================================ */}
+      <div style={{ border: '1px solid #E3E6EC', borderRadius: 10, background: '#fff', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #E3E6EC' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h2 style={{ fontSize: 15, color: NAVY, margin: 0 }}>Rastreo de paquetes enviados</h2>
+              <p style={{ fontSize: 12.5, color: GRIS, margin: '3px 0 0' }}>
+                Con guía registrada y todavía sin contra recibo. Pica la guía para abrir Paquetexpress.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <select value={quienVerifica} onChange={(e) => setQuienVerifica(e.target.value)}
+                style={{ fontSize: 13, width: 'auto', borderColor: quienVerifica ? undefined : '#E0A6A6' }}>
+                <option value="">— quién verifica —</option>
+                {PERSONAS.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <button type="button" onClick={() => setFiltroRastreo(filtroRastreo === 'todos' ? 'pendientes' : 'todos')}
+                style={{ padding: '7px 13px', border: '1px solid #E3E6EC', borderRadius: 7, background: '#fff',
+                  color: NAVY, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                {filtroRastreo === 'todos' ? 'Ver solo por verificar' : 'Ver todos'}
+              </button>
+            </div>
+          </div>
+          <div style={{ fontSize: 12.5, color: GRIS, marginTop: 10 }}>
+            {rastreoVisible.length} paquete(s) · <b style={{ color: NAVY }}>{mny(importeRastreo)}</b>
+            {fueraMeta > 0 && <b style={{ color: ROJO }}>{' · ' + fueraMeta + ' con más de ' + META_DIAS + ' días'}</b>}
+          </div>
+        </div>
+
+        {rastreoVisible.length === 0 && (
+          <p style={{ padding: 18, fontSize: 13.5, color: GRIS, margin: 0 }}>
+            No hay paquetes por verificar.
+          </p>
+        )}
+
+        {rastreoVisible.map((e) => {
+          const d = diasDesde(e.fecha_envio);
+          const tarde = d > META_DIAS;
+          const est = ESTATUS.find((x) => x.v === e.estatus_entrega) || ESTATUS[0];
+          return (
+            <div key={e.id} style={{
+              padding: '13px 18px', borderTop: '1px solid #F1F2F5',
+              borderLeft: '3px solid ' + (tarde ? ROJO : '#E3E6EC'),
+              background: tarde ? '#FDF7F7' : '#fff',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+                <div style={{ minWidth: 260 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: NAVY }}>{e.delegacion}</div>
+                  <div style={{ marginTop: 4 }}>
+                    <a href={'https://www.paquetexpress.com.mx/rastreo/' + encodeURIComponent(e.guia)}
+                       target="_blank" rel="noopener noreferrer"
+                       style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 600 }}>
+                      {e.guia} ↗
+                    </a>
+                  </div>
+                  <div style={{ fontSize: 12, color: GRIS, marginTop: 3 }}>
+                    Salió el {fmtFecha(e.fecha_envio)} ·{' '}
+                    <b style={{ color: tarde ? ROJO : GRIS }}>{d} días</b>
+                    {' · '}{e.facturas} factura(s) · {mny(e.importe)}
+                  </div>
+                  {e.enviado_por && <div style={{ fontSize: 11.5, color: GRIS }}>enviado por {e.enviado_por}</div>}
+                  {e.guia_repetida && (
+                    <div style={{ fontSize: 11.5, color: ROJO, background: '#FBEAEA', borderRadius: 5, padding: '3px 7px', marginTop: 5, display: 'inline-block' }}>
+                      ⚠ Esta guía está en más de un paquete — revisa el acuse antes de marcar
+                    </div>
+                  )}
+                  {e.verificado_por && (
+                    <div style={{ fontSize: 11.5, color: GRIS, marginTop: 4 }}>
+                      Verificó {e.verificado_por} el {fmtFecha(e.fecha_verificacion)}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 600, color: est.color, background: est.fondo, borderRadius: 5, padding: '3px 9px' }}>
+                    {est.txt}
+                  </span>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {ESTATUS.filter((x) => x.v !== 'sin_verificar').map((x) => (
+                      <button key={x.v} type="button" disabled={guardandoEst === e.id}
+                        onClick={() => marcarEstatus(e.id, x.v)}
+                        style={{
+                          padding: '6px 11px', borderRadius: 6, fontSize: 12, fontWeight: 600,
+                          cursor: guardandoEst === e.id ? 'default' : 'pointer',
+                          border: '1px solid ' + (e.estatus_entrega === x.v ? x.color : '#E3E6EC'),
+                          background: e.estatus_entrega === x.v ? x.color : '#fff',
+                          color: e.estatus_entrega === x.v ? '#fff' : x.color,
+                        }}>
+                        {x.txt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
