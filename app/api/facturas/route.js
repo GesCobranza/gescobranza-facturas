@@ -29,7 +29,22 @@ export async function GET(request) {
   function construirQuery() {
     // Se lee de facturas_cr (facturas + detalle del contra recibo) para poder
     // filtrar por fecha de emisión y mostrar el estatus institucional.
-    let q = supabase.from('facturas_cr').select('*', { count: 'exact' }).order('fecha_captura', { ascending: false });
+    let q = supabase.from('facturas_cr').select('*', { count: 'exact' })
+      .order('fecha_captura', { ascending: false });
+
+    // -----------------------------------------------------------------------
+    // DESEMPATE OBLIGATORIO. No quitar.
+    // fecha_captura NO es unica: las cargas masivas dejan miles de filas con
+    // el MISMO timestamp al microsegundo. Postgres no garantiza ningun orden
+    // entre filas empatadas, y cada pagina de .range() es una consulta nueva
+    // que puede devolverlas barajadas distinto: una fila sale repetida en una
+    // pagina y AUSENTE en todas las demas.
+    // Este mismo defecto hizo que el Excel del portal de Sago perdiera 35
+    // registros y generara un reclamo. Ordenar tambien por id (uuid, unico)
+    // vuelve el orden determinista.
+    // -----------------------------------------------------------------------
+    q = q.order('id', { ascending: true });
+
     if (grupo) q = q.eq('grupo', grupo);
     if (delegacion) q = q.eq('delegacion', delegacion);
     if (provNo) q = q.eq('prov_no_norm', normalizarProvNo(provNo));
@@ -49,18 +64,50 @@ export async function GET(request) {
   }
 
   if (exportar) {
-    // Trae TODAS las filas que coincidan con los filtros, sin límite de página (para exportar a Excel)
+    // Trae TODAS las filas que coincidan con los filtros, sin límite de página.
     const PAGINA = 1000;
+    const MAX_PAGINAS = 200; // tope de seguridad: el while(true) anterior podia no terminar
     let desde = 0;
     let todas = [];
-    while (true) {
-      const { data, error } = await construirQuery().range(desde, desde + PAGINA - 1);
+    let totalEsperado = null;
+
+    for (let p = 0; p < MAX_PAGINAS; p += 1) {
+      const { data, error, count } = await construirQuery().range(desde, desde + PAGINA - 1);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      todas = todas.concat(data);
-      if (data.length < PAGINA) break;
+      if (totalEsperado === null && typeof count === 'number') totalEsperado = count;
+      const lote = data || [];
+      todas = todas.concat(lote);
+      if (lote.length < PAGINA) break;
       desde += PAGINA;
     }
-    return NextResponse.json({ facturas: todas, total: todas.length });
+
+    // Red de seguridad 1: quita cualquier fila repetida por id
+    const vistos = new Set();
+    const unicas = [];
+    for (const f of todas) {
+      if (f && f.id && !vistos.has(f.id)) {
+        vistos.add(f.id);
+        unicas.push(f);
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Red de seguridad 2: si lo traido no cuadra con lo que la base dice que
+    // hay, NO se entrega un archivo incompleto en silencio. Un Excel corto sin
+    // aviso se lee como facturas no gestionadas: eso fue lo que genero el
+    // reclamo de Sago. Un error visible se vuelve a intentar; un archivo
+    // corto no se detecta.
+    // -----------------------------------------------------------------------
+    if (typeof totalEsperado === 'number' && unicas.length !== totalEsperado) {
+      return NextResponse.json({
+        error: 'La exportación salió incompleta (' + unicas.length + ' de ' + totalEsperado +
+               ' registros) y no se generó el archivo. Vuelve a intentarlo.',
+        esperado: totalEsperado,
+        obtenido: unicas.length,
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({ facturas: unicas, total: unicas.length });
   }
 
   const pagina = Math.max(1, parseInt(searchParams.get('pagina') || '1', 10));
