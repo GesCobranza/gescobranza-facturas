@@ -202,7 +202,13 @@ export default function Home() {
       return { txt: 'Programada', cls: 'tag-blue', det: 'pago ' + fmtFecha(f.cr_fecha_prog_pago) };
     }
     if (f.tiene_cr) return { txt: 'Con CR', cls: 'tag-green', det: f.comprobante || '' };
-    if (f.envio_guia) return { txt: 'Enviada', cls: 'tag-amber', det: fmtFecha(f.envio_fecha) + ' · ' + f.envio_guia };
+       if (f.envio_guia) {
+      const ent = f.envio_estatus_entrega;
+      if (ent === 'entregada') return { txt: 'Entregada', cls: 'tag-green', det: fmtFecha(f.envio_fecha) + ' · guía ' + f.envio_guia };
+      if (ent === 'no_entregada') return { txt: '⚠ No entregada', cls: 'tag-red', det: 'reenviar · guía ' + f.envio_guia };
+      if (ent === 'en_transito') return { txt: 'Enviada', cls: 'tag-amber', det: 'en tránsito · ' + fmtFecha(f.envio_fecha) };
+      return { txt: 'Enviada', cls: 'tag-amber', det: fmtFecha(f.envio_fecha) + ' · ' + f.envio_guia };
+    }
     if (f.enviada_gestor) return { txt: 'Enviada', cls: 'tag-amber', det: f.fecha_envio ? fmtFecha(f.fecha_envio) : 'sin guía' };
     return { txt: 'Por enviar', cls: 'tag-gray', det: '' };
   }
