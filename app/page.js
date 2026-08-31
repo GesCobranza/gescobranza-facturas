@@ -46,6 +46,7 @@ export default function Home() {
   const [seguimientoData, setSeguimientoData] = useState({ resumenPorDelegacion: [], resumenEsperando: [], esperando: [], filasGestores: [], totalFilasGestores: 0 });
   const [verTodasPend, setVerTodasPend] = useState(false);
   const [verTodasEsp, setVerTodasEsp] = useState(false);
+  const [vistaPaquetes, setVistaPaquetes] = useState(false);
   const [gCargando, setGCargando] = useState(false);
   const GESTORES_POR_PAGINA = 50;
 
@@ -202,12 +203,12 @@ export default function Home() {
       return { txt: 'Programada', cls: 'tag-blue', det: 'pago ' + fmtFecha(f.cr_fecha_prog_pago) };
     }
     if (f.tiene_cr) return { txt: 'Con CR', cls: 'tag-green', det: f.comprobante || '' };
-       if (f.envio_guia) {
+    if (f.envio_guia) {
       const ent = f.envio_estatus_entrega;
       if (ent === 'entregada') return { txt: 'Entregada', cls: 'tag-green', det: fmtFecha(f.envio_fecha) + ' · guía ' + f.envio_guia };
       if (ent === 'no_entregada') return { txt: '⚠ No entregada', cls: 'tag-red', det: 'reenviar · guía ' + f.envio_guia };
       if (ent === 'en_transito') return { txt: 'Enviada', cls: 'tag-amber', det: 'en tránsito · ' + fmtFecha(f.envio_fecha) };
-            return { txt: 'Enviada', cls: 'tag-amber', det: 'sin verificar · ' + fmtFecha(f.envio_fecha) };
+      return { txt: 'Enviada', cls: 'tag-amber', det: 'sin verificar · ' + fmtFecha(f.envio_fecha) };
     }
     if (f.enviada_gestor) return { txt: 'Enviada', cls: 'tag-amber', det: f.fecha_envio ? fmtFecha(f.fecha_envio) : 'sin guía' };
     return { txt: 'Por enviar', cls: 'tag-gray', det: '' };
@@ -924,7 +925,21 @@ async function cruzarCon5005() {
       ).sort((a, b) => b[1].length - a[1].length);
   const maxPend = Math.max(1, ...(seguimientoData.resumenPorDelegacion || []).map((v) => v.n));
   const pendOrdenadas = [...(seguimientoData.resumenPorDelegacion || [])].sort((a, b) => Number(b.importe || 0) - Number(a.importe || 0));
-  const espOrdenadas = [...(seguimientoData.resumenEsperando || [])].sort((a, b) => Number(b.importe_fuera_meta || 0) - Number(a.importe_fuera_meta || 0));
+
+  // La función resumen_esperando_cr ya devuelve el orden por urgencia:
+  // sin arrancar, parada, lenta, trabajando. No se reordena aquí.
+  const espOrdenadas = [...(seguimientoData.resumenEsperando || [])];
+
+  // Semáforo de actividad: dice si la delegación está procesando ese lote o
+  // lleva días parada. Es lo que decide entre reclamar y esperar.
+  function actividadInfo(a) {
+    if (a === 'sin_arrancar') return { etiqueta: 'Sin arrancar', texto: 'var(--red)', borde: 'var(--red)', fondo: 'var(--red-soft)' };
+    if (a === 'parada') return { etiqueta: 'Parada', texto: 'var(--red)', borde: 'var(--red)', fondo: 'var(--red-soft)' };
+    if (a === 'lenta') return { etiqueta: 'Lenta', texto: 'var(--amber)', borde: 'var(--amber)', fondo: 'var(--amber-soft)' };
+    if (a === 'trabajando') return { etiqueta: 'Trabajando', texto: 'var(--green)', borde: 'var(--green)', fondo: 'var(--green-soft)' };
+    return { etiqueta: 'Sin guía registrada', texto: 'var(--text-soft)', borde: 'var(--line)', fondo: 'var(--card)' };
+  }
+
   const TARJETAS_VISIBLES = 12;
 
   // Meta: 6 días desde el envío. El color solo mira los días de espera.
@@ -1703,7 +1718,7 @@ async function cruzarCon5005() {
                   onClick={() => filtrarPorDelegacion(v.delegacion, 'noenviada')}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
                   <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--navy)', marginTop: 6 }}>{mmm(v.importe)}</div>
-                                    <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
+                  <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>{v.n} factura(s)</div>
                   {Number(v.viejas) > 0 && (
                     <div style={{ fontSize: 11, color: 'var(--red)', background: 'var(--red-soft)', borderRadius: 5, padding: '3px 6px', marginTop: 5, lineHeight: 1.3 }}>
                       ⚠ {v.viejas} con más de 15 días{v.dias_max ? ' · hasta ' + v.dias_max + 'd' : ''}
@@ -1726,36 +1741,89 @@ async function cruzarCon5005() {
           </div>
 
           <div className="card">
-            <h2>Esperando contra recibo, por delegación</h2>
-            <p className="muted" style={{ marginBottom: 12 }}>Ya enviadas y sin respuesta del IMSS. Ordenadas por importe fuera de la meta de 6 días.</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Esperando contra recibo, por delegación</h2>
+                <p className="muted" style={{ margin: '4px 0 12px' }}>
+                  Enviadas con guía y sin respuesta del IMSS. Ordenadas por urgencia: primero las que no han emitido nada.
+                </p>
+              </div>
+              <button className="btn btn-ghost btn-sm" onClick={() => setVistaPaquetes(!vistaPaquetes)}>
+                {vistaPaquetes ? 'Ver agrupado por delegación' : 'Ver por paquete'}
+              </button>
+            </div>
+
             {espOrdenadas.length === 0 && <p className="muted">No hay facturas esperando respuesta.</p>}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 10 }}>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 10 }}>
               {(verTodasEsp ? espOrdenadas : espOrdenadas.slice(0, TARJETAS_VISIBLES)).map((v) => {
-                const c = colorMeta(v.dias_max);
+                const act = actividadInfo(v.actividad);
+                const pct = Number(v.pct || 0);
                 return (
                   <div key={v.delegacion}
-                    style={{ background: c.fondo, border: gFiltroDeleg === v.delegacion && gFiltroEnvio === 'enviada' ? '2px solid var(--navy)' : '1px solid var(--line)', borderLeft: '3px solid ' + c.borde, borderRadius: 8, padding: '10px 12px', cursor: 'pointer' }}
+                    style={{ background: act.fondo, border: gFiltroDeleg === v.delegacion && gFiltroEnvio === 'enviada' ? '2px solid var(--navy)' : '1px solid var(--line)', borderLeft: '3px solid ' + act.borde, borderRadius: 8, padding: '11px 13px', cursor: 'pointer' }}
                     onClick={() => filtrarPorDelegacion(v.delegacion, 'enviada')}>
+
                     <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--navy)', lineHeight: 1.3, minHeight: 32 }}>{v.delegacion}</div>
-                    <div style={{ fontSize: 17, fontWeight: 700, color: c.texto, marginTop: 6 }}>{mmm(v.importe)}</div>
-                    <div className="muted" style={{ fontSize: 11.5, marginTop: 2 }}>
-                      {v.n} factura(s) · <b style={{ color: c.texto }}>{v.dias_max} días</b>
-                    </div>
-                    {v.fuera_meta > 0 && (
-                      <div style={{ fontSize: 11.5, color: c.texto, marginTop: 3 }}>{v.fuera_meta} fuera de meta · {mmm(v.importe_fuera_meta)}</div>
+
+                    <div style={{ fontSize: 11.5, color: act.texto, fontWeight: 600, marginTop: 5 }}>{act.etiqueta}</div>
+
+                    {Number(v.total) > 0 && (
+                      <>
+                        <div style={{ fontSize: 12.5, color: 'var(--navy)', marginTop: 5 }}>
+                          <b>{v.con_cr} de {v.total}</b> con contra recibo · {pct}%
+                        </div>
+                        <div style={{ height: 5, background: '#E8EAEE', borderRadius: 3, marginTop: 4, overflow: 'hidden' }}>
+                          <div style={{ width: Math.max(2, pct) + '%', height: '100%', background: act.borde }} />
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--navy)', marginTop: 7 }}>{mmm(v.importe)}</div>
+                        <div className="muted" style={{ fontSize: 11.5 }}>{v.n} pendiente(s)</div>
+                        <div style={{ fontSize: 11.5, color: act.texto, marginTop: 3 }}>
+                          {v.ultimo_cr
+                            ? 'Último CR hace ' + v.dias_sin_emitir + ' día(s)'
+                            : 'Sin ningún contra recibo emitido'}
+                        </div>
+                      </>
                     )}
-                    <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, fontSize: 11.5, padding: '4px 10px' }}
-                      disabled={reclamando === v.delegacion}
-                      onClick={(e) => { e.stopPropagation(); generarReclamo(v.delegacion); }}>
-                      {reclamando === v.delegacion ? 'Generando…' : '✉ Reclamar'}
-                    </button>
+
+                    {Number(v.import_n) > 0 && (
+                      <div style={{ fontSize: 11, color: 'var(--amber)', background: 'var(--amber-soft)', borderRadius: 5, padding: '3px 7px', marginTop: 6, lineHeight: 1.3 }}>
+                        +{v.import_n} de carga histórica, sin guía · {mmm(v.import_importe)}
+                      </div>
+                    )}
+
+                    {vistaPaquetes && (v.paquetes || []).length > 0 && (
+                      <div style={{ marginTop: 8, borderTop: '1px solid var(--line)', paddingTop: 7 }}>
+                        {(v.paquetes || []).map((p) => (
+                          <div key={p.envio_id} style={{ marginBottom: 7 }}>
+                            <a href={'https://www.paquetexpress.com.mx/rastreo/' + encodeURIComponent(p.guia)}
+                               target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                               style={{ fontSize: 11.5, fontFamily: 'monospace', fontWeight: 600 }}>
+                              {p.guia} ↗
+                            </a>
+                            <div className="muted" style={{ fontSize: 11 }}>
+                              {p.con_cr} de {p.total} · {p.pct}% · {p.dias}d · {mmm(p.importe_pendiente)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {Number(v.total) > 0 && (
+                      <button className="btn btn-ghost btn-sm" style={{ marginTop: 8, fontSize: 11.5, padding: '4px 10px' }}
+                        disabled={reclamando === v.delegacion}
+                        onClick={(e) => { e.stopPropagation(); generarReclamo(v.delegacion); }}>
+                        {reclamando === v.delegacion ? 'Generando…' : '✉ Reclamar'}
+                      </button>
+                    )}
                   </div>
                 );
               })}
             </div>
+
             {espOrdenadas.length > TARJETAS_VISIBLES && (
               <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setVerTodasEsp(!verTodasEsp)}>
-                {verTodasEsp ? 'Ver solo las 12 mayores' : 'Ver las ' + (espOrdenadas.length - TARJETAS_VISIBLES) + ' restantes'}
+                {verTodasEsp ? 'Ver solo las 12 primeras' : 'Ver las ' + (espOrdenadas.length - TARJETAS_VISIBLES) + ' restantes'}
               </button>
             )}
           </div>
@@ -1796,7 +1864,7 @@ async function cruzarCon5005() {
                         <td>{f.alta}</td><td>{f.empresa}</td><td>{f.pdf ? <a href={`/documentos?folio=${f.pdf}`} target="_blank" rel="noreferrer">{f.pdf} · Ver PDF</a> : '—'}</td><td>{f.delegacion}</td>
                         <td>${Number(f.importe).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
                         <td className="muted">{formatearFechaCaptura(f.fecha_captura)}</td>
-                                               <td>{f.enviada_gestor
+                        <td>{f.enviada_gestor
                           ? <>
                               <span className="tag tag-enviada">Enviada</span>{' '}
                               <a href="#" onClick={(e) => { e.preventDefault(); quitarEnviada(f.id); }} className="muted">deshacer</a>
