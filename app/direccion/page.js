@@ -29,6 +29,7 @@ export default function Direccion() {
   const [entrada, setEntrada] = useState('');
   const [autenticado, setAutenticado] = useState(false);
   const [error, setError] = useState('');
+  const [verificando, setVerificando] = useState(false);
   const [dias, setDias] = useState(30);
   const [rangoLibre, setRangoLibre] = useState(false);
   const [desde, setDesde] = useState('');
@@ -37,33 +38,69 @@ export default function Direccion() {
   const [cargando, setCargando] = useState(false);
 
   useEffect(() => {
-    if (autenticado) cargar();
+    if (autenticado) cargar(clave);
   }, [autenticado, dias, rangoLibre, desde, hasta]);
 
-  async function cargar() {
+  // -------------------------------------------------------------------------
+  // La clave viaja al servidor en cada consulta y se valida contra la base.
+  // Antes se comparaba aqui en el navegador con una variable NEXT_PUBLIC_, que
+  // Next.js incrusta en el codigo descargado: cualquiera la leia con F12. Y la
+  // ruta /api/pulso no pedia nada, asi que la pantalla solo escondia la vista.
+  // -------------------------------------------------------------------------
+  async function cargar(claveUsada) {
     setCargando(true);
     try {
-      const q = rangoLibre && desde && hasta
-        ? '?desde=' + desde + '&hasta=' + hasta
-        : '?dias=' + dias;
-      const res = await fetch('/api/pulso' + q);
+      const cuerpo = rangoLibre && desde && hasta
+        ? { clave: claveUsada, desde: desde, hasta: hasta }
+        : { clave: claveUsada, dias: dias };
+      const res = await fetch('/api/pulso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cuerpo),
+      });
       const d = await res.json();
-      setPulso(d.ok ? d.pulso : null);
+      if (!d.ok) {
+        // Si la clave dejo de ser valida (por ejemplo, se roto), se regresa al login
+        if (res.status === 401) {
+          setAutenticado(false);
+          setClave('');
+          setError('La sesión expiró o la clave cambió. Vuelve a entrar.');
+        }
+        setPulso(null);
+      } else {
+        setPulso(d.pulso);
+      }
     } catch (e) {
       setPulso(null);
     }
     setCargando(false);
   }
 
-  function entrar() {
-    // El acceso es solo para dirección; la clave vive en la variable de entorno del cliente
-    if (entrada === (process.env.NEXT_PUBLIC_CLAVE_DIRECCION || 'Direccion2026')) {
-      setClave(entrada);
-      setAutenticado(true);
-      setError('');
-    } else {
-      setError('Clave incorrecta.');
+  async function entrar() {
+    const c = entrada.trim();
+    if (!c) { setError('Escribe la clave.'); return; }
+    setVerificando(true);
+    setError('');
+    try {
+      // Se valida pidiendo datos: si el servidor responde ok, la clave sirve.
+      const res = await fetch('/api/pulso', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clave: c, dias: dias }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setClave(c);
+        setPulso(d.pulso);
+        setAutenticado(true);
+        setEntrada('');
+      } else {
+        setError(d.error || 'Clave incorrecta.');
+      }
+    } catch (e) {
+      setError('No se pudo conectar. Intenta de nuevo.');
     }
+    setVerificando(false);
   }
 
   if (!autenticado) {
@@ -77,8 +114,9 @@ export default function Direccion() {
             onKeyDown={(e) => { if (e.key === 'Enter') entrar(); }}
             placeholder="Clave" style={{ width: '100%', padding: '10px 12px', border: '1px solid ' + LINEA, borderRadius: 7, fontSize: 14 }} />
           {error && <p style={{ color: ROJO, fontSize: 12.5, marginTop: 8 }}>{error}</p>}
-          <button onClick={entrar} style={{ width: '100%', marginTop: 14, padding: '11px', border: 'none', borderRadius: 7, background: NAVY, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            Entrar
+          <button onClick={entrar} disabled={verificando}
+            style={{ width: '100%', marginTop: 14, padding: '11px', border: 'none', borderRadius: 7, background: verificando ? '#B9BCC2' : NAVY, color: '#fff', fontSize: 14, fontWeight: 600, cursor: verificando ? 'default' : 'pointer' }}>
+            {verificando ? 'Verificando…' : 'Entrar'}
           </button>
         </div>
       </div>
@@ -128,6 +166,10 @@ export default function Direccion() {
                 style={{ padding: '6px 9px', border: '1px solid ' + LINEA, borderRadius: 7, fontSize: 12.5 }} />
             </>
           )}
+          <button onClick={() => { setAutenticado(false); setClave(''); setPulso(null); }}
+            style={{ padding: '7px 13px', border: '1px solid ' + LINEA, borderRadius: 7, background: '#fff', color: GRIS, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+            Salir
+          </button>
         </div>
       </div>
 
