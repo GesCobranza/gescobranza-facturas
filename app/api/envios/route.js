@@ -3,11 +3,58 @@ import { getSupabaseAdmin } from '../../../lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+// ---------------------------------------------------------------------------
+// CANDADO DE GUIA UNICA
+//
+// Un paquete fisico tiene un solo numero de guia y un solo destino. Cuando la
+// misma guia queda en dos paquetes no hay forma de saber cual rastrear en
+// Paquetexpress: el sitio devuelve un resultado y no se sabe a que envio
+// corresponde. Paso 5 veces (delegaciones vecinas o el mismo dia), porque al
+// capturar en serie se arrastra el numero anterior.
+//
+// Devuelve el paquete que ya usa esa guia, o null si esta libre.
+// ---------------------------------------------------------------------------
+async function guiaYaUsada(supabase, guia, excluirEnvioId) {
+  const limpia = String(guia || '').trim();
+  if (!limpia) return null;
+  let q = supabase
+    .from('envios')
+    .select('id, guia, delegacion, fecha_envio, enviado_por')
+    .eq('guia', limpia)
+    .limit(1);
+  if (excluirEnvioId) q = q.neq('id', excluirEnvioId);
+  const { data } = await q;
+  return data && data.length > 0 ? data[0] : null;
+}
+
+function fmtFecha(iso) {
+  if (!iso) return 'sin fecha';
+  const p = String(iso).slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(iso);
+}
+
 // GET: facturas listas para enviar de una delegación
 // (capturadas, sin contra recibo y sin envío registrado)
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
+
+    // Verificacion en vivo desde el formulario: ?verificarGuia=123456
+    const verificar = String(searchParams.get('verificarGuia') || '').trim();
+    if (verificar) {
+      const supabase = getSupabaseAdmin();
+      const dup = await guiaYaUsada(supabase, verificar, null);
+      return NextResponse.json({
+        ok: true,
+        libre: !dup,
+        usadaPor: dup ? {
+          delegacion: dup.delegacion,
+          fecha: fmtFecha(dup.fecha_envio),
+          enviadoPor: dup.enviado_por,
+        } : null,
+      });
+    }
+
     const delegacion = String(searchParams.get('delegacion') || '').trim();
     if (!delegacion) return NextResponse.json({ ok: true, facturas: [] });
 
@@ -84,6 +131,19 @@ export async function POST(request) {
       if (!envioId || !nuevaGuia) {
         return NextResponse.json({ ok: false, error: 'Falta el paquete o el número de guía.' }, { status: 400 });
       }
+
+      // Candado: esa guia no puede estar ya en otro paquete
+      const dup = await guiaYaUsada(supabase, nuevaGuia, envioId);
+      if (dup && body.forzarGuiaRepetida !== true) {
+        return NextResponse.json({
+          ok: false,
+          guiaRepetida: true,
+          error: 'La guía ' + nuevaGuia + ' ya está registrada en el paquete de '
+                 + dup.delegacion + ' del ' + fmtFecha(dup.fecha_envio)
+                 + '. Revisa el acuse: un paquete no puede tener dos destinos.',
+        }, { status: 409 });
+      }
+
       const { data: act, error: errG } = await supabase
         .from('envios')
         .update({ guia: nuevaGuia })
@@ -118,6 +178,20 @@ export async function POST(request) {
     }
     if (ids.length === 0) {
       return NextResponse.json({ ok: false, error: 'No seleccionaste ninguna factura.' }, { status: 400 });
+    }
+
+    // Candado: la guia no puede estar ya en otro paquete
+    if (guia) {
+      const dup = await guiaYaUsada(supabase, guia, null);
+      if (dup && body.forzarGuiaRepetida !== true) {
+        return NextResponse.json({
+          ok: false,
+          guiaRepetida: true,
+          error: 'La guía ' + guia + ' ya está registrada en el paquete de '
+                 + dup.delegacion + ' del ' + fmtFecha(dup.fecha_envio)
+                 + '. Revisa el acuse: un paquete no puede tener dos destinos.',
+        }, { status: 409 });
+      }
     }
 
     const { data: envio, error: errEnvio } = await supabase
